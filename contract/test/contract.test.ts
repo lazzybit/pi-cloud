@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { sendInput } from "../contract/contract.ts";
+import { sendInput } from "../contract.ts";
 it("rejects whitespace and bounds prompt size", () => {
   for (const text of [" ", "x".repeat(32001)])
     expect(

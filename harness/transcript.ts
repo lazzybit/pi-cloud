@@ -1,5 +1,5 @@
 import type { ConversationView, LiveState } from "@earendil-works/pi-durable";
-import type { Snapshot, ToolCall } from "../contract/contract.ts";
+import type { Snapshot, ToolCall } from "contract";
 
 function text(content: unknown): string {
   return typeof content === "string"

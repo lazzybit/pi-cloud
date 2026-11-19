@@ -6,6 +6,10 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
+import { apiPort, webPort, entry } from "./entry.mjs";
+import { headless } from "./headless.mjs";
+process.chdir(fileURLToPath(new URL("../../../", import.meta.url)));
 import { fake } from "./fake.mjs";
 import { realm } from "./realm.mjs";
 import { cluster } from "./cluster.mjs";
@@ -23,7 +27,7 @@ const model = fake(),
     persistent: false,
     onLog: () => {},
   });
-let kc, app, stopCluster;
+let kc, app, stopCluster, web, ingress;
 const importDir = join(kcHome, "data/import");
 try {
   await mkdir(importDir, { recursive: true });
@@ -68,15 +72,15 @@ try {
   }
   const env = {
     ...process.env,
-    PORT: "38443",
+    PORT: String(apiPort),
     BIND: "127.0.0.1",
-    PUBLIC_ORIGIN: origin,
+    PUBLIC_ORIGIN: `http://127.0.0.1:${apiPort}`,
     DATABASE_URL: "postgres://postgres:password@127.0.0.1:35321/postgres",
     MODEL_BASE_URL: "http://127.0.0.1:35322/v1",
     MODEL_ID: "fixture",
     MODEL_CHOICES: "fixture-alt",
     OIDC_ISSUER: issuer,
-    OIDC_CLIENT_ID: "web",
+
     OIDC_AUDIENCE: "api",
     CONTROLLER_URL: "http://127.0.0.1:35325",
     CONTROLLER_KEY: controllerKey,
@@ -104,7 +108,7 @@ try {
                   "MODEL_ID",
                   "MODEL_CHOICES",
                   "OIDC_ISSUER",
-                  "OIDC_CLIENT_ID",
+
                   "OIDC_AUDIENCE",
                   "CONTROLLER_URL",
                   "CONTROLLER_KEY",
@@ -128,17 +132,67 @@ try {
     await writeFile(dir + "/writer.pid", String(app.pid));
   };
   await launch();
-  const test = spawn("npx", ["playwright", "test", "--config=tests/e2e/playwright.config.ts", ...process.argv.slice(2)], {
-    env: {
-      ...process.env,
-      PI_E2E_ORIGIN: origin,
-      PI_E2E_PASSWORD: password,
-      PI_E2E_DIR: dir,
-      PI_E2E_ISSUER: issuer,
-      PI_E2E_CONTAINER: env.HARNESS_IMAGE ? "1" : "",
+  await headless({ dir, issuer, password });
+  const webEnv = {
+    ...process.env,
+    PORT: String(webPort),
+    BIND: "127.0.0.1",
+    OIDC_ISSUER: issuer,
+    OIDC_CLIENT_ID: "web",
+  };
+  web = process.env.WEB_IMAGE
+    ? spawn(
+        "docker",
+        [
+          "run",
+          "--rm",
+          "--network",
+          "host",
+          "--name",
+          "pi-spa-test",
+          "-e",
+          "PORT",
+          "-e",
+          "BIND",
+          "-e",
+          "OIDC_ISSUER",
+          "-e",
+          "OIDC_CLIENT_ID",
+          process.env.WEB_IMAGE,
+        ],
+        { env: webEnv },
+      )
+    : spawn(process.execPath, ["web/server.mjs"], { env: webEnv });
+  for (const end = Date.now() + 15000; ; ) {
+    if (
+      await fetch(`http://127.0.0.1:${webPort}/`)
+        .then((r) => r.ok)
+        .catch(() => false)
+    )
+      break;
+    if (Date.now() > end) throw Error("web not ready");
+    await sleep(100);
+  }
+  ingress = entry();
+  const test = spawn(
+    "web/test/e2e/node_modules/.bin/playwright",
+    [
+      "test",
+      "--config=web/test/e2e/playwright.config.ts",
+      ...process.argv.slice(2),
+    ],
+    {
+      env: {
+        ...process.env,
+        PI_E2E_ORIGIN: origin,
+        PI_E2E_PASSWORD: password,
+        PI_E2E_DIR: dir,
+        PI_E2E_ISSUER: issuer,
+        PI_E2E_CONTAINER: env.HARNESS_IMAGE ? "1" : "",
+      },
+      stdio: "inherit",
     },
-    stdio: "inherit",
-  });
+  );
   let done = false;
   const result = once(test, "exit").then(([code]) => {
     done = true;
@@ -150,6 +204,8 @@ try {
   }
   process.exitCode = await result;
 } finally {
+  ingress?.close();
+  web?.kill();
   stopCluster?.();
   if (process.env.HARNESS_IMAGE) {
     const c = spawn("docker", ["rm", "-f", "pi-writer-test"], {

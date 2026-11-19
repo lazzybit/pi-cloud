@@ -1,19 +1,17 @@
 import http from "node:http";
-import { readFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 import { Client } from "pg";
 import { implement } from "@orpc/server";
 import { OpenAPIHandler } from "@orpc/openapi/node";
 import { runtime } from "./runtime.ts";
-import { contract } from "../contract/contract.ts";
+import { contract } from "contract";
 import { verifier, trustedUrl, type Identity } from "./auth.ts";
 function required(k: string) {
   if (!process.env[k]) throw Error("missing " + k);
   return process.env[k]!;
 }
 const origin = trustedUrl(required("PUBLIC_ORIGIN")),
-  issuer = required("OIDC_ISSUER"),
-  client_id = required("OIDC_CLIENT_ID");
+  issuer = required("OIDC_ISSUER");
 const verify = verifier(issuer, required("OIDC_AUDIENCE"));
 const db = new Client({
   connectionString: required("DATABASE_URL"),
@@ -74,10 +72,6 @@ const server = http.createServer(async (req, res) => {
     res.setHeader("cache-control", "no-store");
     res.setHeader("referrer-policy", "no-referrer");
     res.setHeader("x-content-type-options", "nosniff");
-    res.setHeader(
-      "content-security-policy",
-      `default-src 'self'; connect-src 'self' ${trustedUrl(issuer).origin}; frame-ancestors 'none'; object-src 'none'; base-uri 'none'`,
-    );
     if (path.startsWith("/api/v1/")) {
       let identity;
       try {
@@ -91,30 +85,6 @@ const server = http.createServer(async (req, res) => {
           .matched
       )
         return;
-    }
-    if (req.method === "GET") {
-      if (path === "/auth/config") {
-        res
-          .writeHead(200, { "content-type": "application/json" })
-          .end(JSON.stringify({ authority: issuer, client_id }));
-        return;
-      }
-      if (path === "/" || path === "/callback" || /^\/c\/\d+$/.test(path)) {
-        res
-          .writeHead(200, { "content-type": "text/html; charset=utf-8" })
-          .end(readFileSync("web/dist/index.html"));
-        return;
-      }
-      if (/^\/assets\/[\w.-]+\.(js|css)$/.test(path)) {
-        res
-          .writeHead(200, {
-            "content-type": path.endsWith(".js")
-              ? "text/javascript"
-              : "text/css",
-          })
-          .end(readFileSync("web/dist" + path));
-        return;
-      }
     }
     res.writeHead(404).end();
   } catch {

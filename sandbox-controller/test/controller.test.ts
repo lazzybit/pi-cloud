@@ -1,6 +1,6 @@
 import { it, expect } from "vitest";
 // @ts-expect-error Native ESM is also the controller image entrypoint format.
-import { profile, pod, expired } from "../sandbox-controller/policy.mjs";
+import { profile, pod, expired } from "../policy.mjs";
 const config = { image: "example.invalid/sandbox@sha256:" + "a".repeat(64) },
   grants = { volume: true, web: false },
   owner = "d".repeat(64);

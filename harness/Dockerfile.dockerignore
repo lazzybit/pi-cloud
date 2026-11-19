@@ -1,0 +1,9 @@
+**
+!contract/
+!contract/package.json
+!contract/contract.ts
+!contract/client.ts
+!harness/
+!harness/package*.json
+!harness/.npmrc
+!harness/*.ts

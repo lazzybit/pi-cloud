@@ -8,7 +8,7 @@ import { PgStorage } from "./storage.ts";
 import { terminalAdapter } from "./terminal.ts";
 import { transcript } from "./transcript.ts";
 import { gateway } from "./provider.ts";
-import type { Snapshot, Settings } from "../contract/contract.ts";
+import type { Snapshot, Settings } from "contract";
 export async function runtime(
   db: Client,
   baseUrl: string,

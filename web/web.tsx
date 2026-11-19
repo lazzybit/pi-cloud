@@ -1,7 +1,7 @@
 import { createSignal, For } from "solid-js";
 import { render } from "@solidjs/web";
-import { connect } from "../contract/client.ts";
-import type { Snapshot, Settings, ToolCall } from "../contract/contract.ts";
+import { connect } from "contract/client";
+import type { Snapshot, Settings, ToolCall } from "contract";
 import "./web.css";
 import { login } from "./auth.ts";
 let api: ReturnType<typeof connect>;

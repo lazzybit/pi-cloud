@@ -12,8 +12,7 @@
     ]
   },
   "include": [
-    "contract",
-    "harness",
-    "tests"
+    "*.ts",
+    "test/*.ts"
   ]
 }

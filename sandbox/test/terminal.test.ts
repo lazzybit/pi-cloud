@@ -10,7 +10,7 @@ it("claims a call once, returns both streams and preserves workspace on restart"
   const cwd = await mkdtemp(join(tmpdir(), "pi-cmd-"));
   let child: ReturnType<typeof spawn> | undefined;
   const launch = async () => {
-    child = spawn("python3", ["sandbox/worker.py"], {
+    child = spawn("python3", ["worker.py"], {
       env: {
         ...process.env,
         RUNTIME_KEY: key,
@@ -18,7 +18,7 @@ it("claims a call once, returns both streams and preserves workspace on restart"
         WORKSPACE: cwd,
         PORT: "35329",
         BIND: "127.0.0.1",
-        GUARD: process.cwd() + "/sandbox/guard",
+        GUARD: process.cwd() + "/guard",
       },
     });
     await Promise.race([

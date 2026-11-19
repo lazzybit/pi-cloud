@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { readFileSync, readdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { permissions } from "../../harness/auth.ts";
+import { permissions } from "../../../harness/auth.ts";
 async function login(page: Page, user = "first") {
   await page.goto("/");
   await page.locator("[name=username]").fill(user);

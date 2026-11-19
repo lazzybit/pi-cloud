@@ -4,7 +4,7 @@ import { Client } from "pg";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runtime } from "../harness/runtime.ts";
+import { runtime } from "../runtime.ts";
 let pg: PG, client: Client, dir: string;
 beforeAll(async () => {
   dir = await mkdtemp(join(tmpdir(), "pi-vitest-"));

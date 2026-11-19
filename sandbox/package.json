@@ -1,0 +1,14 @@
+{
+  "name": "sandbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {},
+  "devDependencies": {
+    "vitest": "5.1.1"
+  },
+  "scripts": {
+    "guard": "cc -Os -o guard guard.c",
+    "test": "npm run guard && vitest run test"
+  }
+}

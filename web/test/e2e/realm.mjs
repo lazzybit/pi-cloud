@@ -41,6 +41,23 @@ export function realm(password, origin) {
         ],
       },
       {
+        clientId: "terminal-fixture",
+        publicClient: true,
+        standardFlowEnabled: false,
+        directAccessGrantsEnabled: true,
+        protocolMappers: [
+          {
+            name: "api audience",
+            protocol: "openid-connect",
+            protocolMapper: "oidc-audience-mapper",
+            config: {
+              "included.custom.audience": "api",
+              "access.token.claim": "true",
+            },
+          },
+        ],
+      },
+      {
         clientId: "api",
         secret: randomUUID(),
         serviceAccountsEnabled: true,

@@ -10,15 +10,25 @@ jobs:
   test:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
+    outputs:
+      images: ${{ steps.changes.outputs.images }}
     steps:
       - uses: actions/checkout@v4
         with: { persist-credentials: false }
       - uses: actions/setup-node@v4
-        with: { node-version: "26", cache: npm }
+        with: { node-version: "26", cache: npm, cache-dependency-path: "**/package-lock.json" }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "21" }
-      - run: npm ci && npm run guard && npm run check && npm test
-      - run: npx playwright install --with-deps chromium
+      - name: Check independent package boundaries
+        run: |
+          test "$(git ls-tree --name-only HEAD | while read -r f; do if [ -f "$f" ]; then printf '%s ' "$f"; fi; done)" = '.gitignore README.md '
+          test ! -d tests
+          for pkg in contract harness tui web sandbox sandbox-controller web/test/e2e; do npm --prefix "$pkg" ci; done
+          for pkg in contract harness web; do npm --prefix "$pkg" run check; done
+          for pkg in contract harness sandbox sandbox-controller; do npm --prefix "$pkg" test; done
+          for pkg in harness tui web; do npm --prefix "$pkg" run build; done
+      - run: ./node_modules/.bin/playwright install --with-deps chromium
+        working-directory: web/test/e2e
       - name: Install disposable Keycloak
         run: |
           curl --fail --location --retry 3 -o "$RUNNER_TEMP/kc.tgz" https://github.com/keycloak/keycloak/releases/download/26.4.7/keycloak-26.4.7.tar.gz
@@ -26,20 +36,22 @@ jobs:
           tar -xzf "$RUNNER_TEMP/kc.tgz" -C "$RUNNER_TEMP"
           printf 'KC_HOME=%s/keycloak-26.4.7\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - name: Determine changed image inputs
+        id: changes
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
-          images='harness sandbox sandbox-controller'
-          if [ -n "$BASE" ]; then
+          images='harness web tui sandbox sandbox-controller'
+          if [ -n "$BASE" ] && ! [[ "$BASE" =~ ^0+$ ]]; then
             git fetch --no-tags --depth=1 origin "$BASE"
             git diff --name-only "$BASE" HEAD > "$RUNNER_TEMP/paths"
             images=''
-            for name in harness sandbox sandbox-controller; do
-              pattern="^($name/|\.github/|\.dockerignore)"
-              if [ "$name" = harness ]; then pattern="$pattern|^(contract/|web/|package(-lock)?\.json|tsconfig)"; fi
+            for name in harness web tui sandbox sandbox-controller; do
+              pattern="^($name/|\.github/)"
+              case "$name" in harness|web|tui) pattern="$pattern|^contract/";; esac
               if grep -Eq "$pattern" "$RUNNER_TEMP/paths"; then images="$images $name"; fi
             done
           fi
+          printf 'images=%s\n' "$images" >> "$GITHUB_OUTPUT"
           printf 'IMAGES=%s\n' "$images" >> "$GITHUB_ENV"
       - name: Build native candidates
         run: |
@@ -50,15 +62,17 @@ jobs:
         run: |
           if docker image inspect pi-cloud-harness:test >/dev/null 2>&1; then export HARNESS_IMAGE=pi-cloud-harness:test; fi
           if docker image inspect pi-cloud-sandbox:test >/dev/null 2>&1; then export WORKER_IMAGE=pi-cloud-sandbox:test; fi
-          npm run e2e
+          if docker image inspect pi-cloud-web:test >/dev/null 2>&1; then export WEB_IMAGE=pi-cloud-web:test; fi
+          if docker image inspect pi-cloud-tui:test >/dev/null 2>&1; then export TUI_IMAGE=pi-cloud-tui:test; fi
+          npm --prefix web/test/e2e test
       - name: Verify controller image modules
         run: |
           if docker image inspect pi-cloud-sandbox-controller:test >/dev/null 2>&1; then docker run --rm pi-cloud-sandbox-controller:test node --input-type=module -e "await import('./lifecycle.mjs')"; fi
       - name: Save tested images
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.changes.outputs.images != ''
         run: docker save $(for name in $IMAGES; do printf 'pi-cloud-%s:test ' "$name"; done) | gzip -1 > "$RUNNER_TEMP/images.tar.gz"
       - uses: actions/upload-artifact@v4
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.changes.outputs.images != ''
         with:
           {
             name: native-images,
@@ -67,7 +81,7 @@ jobs:
             compression-level: 0,
           }
   publish:
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.test.outputs.images != ''
     needs: test
     runs-on: ubuntu-24.04-arm
     permissions: { packages: write, contents: read }
@@ -77,10 +91,11 @@ jobs:
       - run: docker load -i images.tar.gz
       - name: Publish tested images by revision
         env:
+          IMAGES: ${{ needs.test.outputs.images }}
           REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          for name in harness sandbox sandbox-controller; do
+          for name in $IMAGES; do
             ref="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/pi-cloud-$name:$GITHUB_SHA"
             docker tag "pi-cloud-$name:test" "$ref"
             docker push "$ref"

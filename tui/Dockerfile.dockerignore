@@ -1,0 +1,9 @@
+**
+!contract/
+!contract/package.json
+!contract/contract.ts
+!contract/client.ts
+!tui/
+!tui/package*.json
+!tui/.npmrc
+!tui/*.ts

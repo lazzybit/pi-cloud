@@ -1,5 +1,5 @@
 // Implement just the Kubernetes resources used by the driver; run the real worker/guard.
-import { lifecycle } from "../../sandbox-controller/lifecycle.mjs";
+import { lifecycle } from "../../../sandbox-controller/lifecycle.mjs";
 import { spawn } from "node:child_process";
 import http from "node:http";
 import { randomUUID } from "node:crypto";
