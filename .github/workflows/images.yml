@@ -64,7 +64,7 @@ jobs:
           if docker image inspect pi-cloud-sandbox:test >/dev/null 2>&1; then export WORKER_IMAGE=pi-cloud-sandbox:test; fi
           if docker image inspect pi-cloud-web:test >/dev/null 2>&1; then export WEB_IMAGE=pi-cloud-web:test; fi
           if docker image inspect pi-cloud-tui:test >/dev/null 2>&1; then export TUI_IMAGE=pi-cloud-tui:test; fi
-          npm --prefix web/test/e2e test
+          timeout 8m npm --prefix web/test/e2e test
       - name: Verify controller image modules
         run: |
           if docker image inspect pi-cloud-sandbox-controller:test >/dev/null 2>&1; then docker run --rm pi-cloud-sandbox-controller:test node --input-type=module -e "await import('./dist/lifecycle.js')"; fi

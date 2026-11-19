@@ -10,6 +10,16 @@ export function cluster(dir, key) {
   const resources = new Map(),
     children = new Set();
   let n = 1;
+  const containerNames = new Map();
+  async function stop(child) {
+    const name = containerNames.get(child);
+    const exited = child.exitCode !== null || child.signalCode !== null ? Promise.resolve() : once(child, 'exit');
+    if (name) {
+      await once(spawn('docker',['rm','-f',name],{stdio:'ignore'}),'exit');
+      containerNames.delete(child);
+    } else child.kill();
+    await exited;
+  }
   async function k(path, method = "GET", data) {
     if (path.includes("?"))
       return {
@@ -21,8 +31,7 @@ export function cluster(dir, key) {
     if (method === "DELETE") {
       const p = resources.get(path);
       if (p.metadata.uid !== data.preconditions.uid) throw Error("uid");
-      p.child.kill();
-      await once(p.child, "exit");
+      await stop(p.child);
       resources.delete(path);
       return {};
     }
@@ -52,6 +61,7 @@ export function cluster(dir, key) {
           ? [
               "run",
               "--rm",
+              "--name", `pi-e2e-${p.metadata.uid}`,
               "--network",
               "host",
               "--user",
@@ -81,6 +91,7 @@ export function cluster(dir, key) {
           stdio: ["ignore", "pipe", "inherit"],
         },
       );
+      if (image) containerNames.set(child, `pi-e2e-${p.metadata.uid}`);
       children.add(child);
       child.once("exit", () => children.delete(child));
       await Promise.race([
@@ -118,8 +129,8 @@ export function cluster(dir, key) {
       }
     })
     .listen(35325, "127.0.0.1");
-  return () => {
+  return async () => {
     server.close();
-    for (const c of children) c.kill();
+    await Promise.all([...children].map(stop));
   };
 }

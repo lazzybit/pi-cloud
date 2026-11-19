@@ -205,8 +205,12 @@ try {
   process.exitCode = await result;
 } finally {
   ingress?.close();
-  web?.kill();
-  stopCluster?.();
+  // Killing the attached docker CLI only proxies SIGTERM to PID 1; explicitly
+  // remove the named fixture so its open stdio cannot hold this runner alive.
+  if (web && process.env.WEB_IMAGE) {
+    await once(spawn("docker", ["rm", "-f", "pi-spa-test"], {stdio:"ignore"}), "exit");
+  } else web?.kill();
+  await stopCluster?.();
   if (process.env.HARNESS_IMAGE) {
     const c = spawn("docker", ["rm", "-f", "pi-writer-test"], {
       stdio: "ignore",
