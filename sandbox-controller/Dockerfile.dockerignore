@@ -1,3 +1,5 @@
 **
 !sandbox-controller/
-!sandbox-controller/*.mjs
+!sandbox-controller/*.ts
+!sandbox-controller/package*.json
+!sandbox-controller/tsconfig*.json

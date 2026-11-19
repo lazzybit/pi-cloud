@@ -1,6 +1,5 @@
 import { it, expect } from "vitest";
-// @ts-expect-error Native ESM is also the controller image entrypoint format.
-import { profile, pod, expired } from "../policy.mjs";
+import { profile, pod, expired } from "../policy.ts";
 const config = { image: "example.invalid/sandbox@sha256:" + "a".repeat(64) },
   grants = { volume: true, web: false },
   owner = "d".repeat(64);
@@ -17,14 +16,16 @@ it("binds identity, actual claim UID, egress and image revision", () => {
     expect(a.binding).not.toBe(other.binding);
   const s = pod(a, grants, config).spec;
   expect(s.automountServiceAccountToken).toBe(false);
-  expect(s.volumes[0].persistentVolumeClaim.claimName).toBe(a.claim);
+  expect(s.volumes[0]).toMatchObject({
+    persistentVolumeClaim: { claimName: a.claim },
+  });
   expect(
     pod(
       profile(owner, { volume: false, web: false }, config),
       { volume: false, web: false },
       config,
-    ).spec.volumes[0].emptyDir,
-  ).toBeDefined();
+    ).spec.volumes[0],
+  ).toHaveProperty("emptyDir");
 });
 it("reclaims only after activity and outstanding lease grace", () => {
   expect(expired({ activity: "100" }, 600099, 600000)).toBe(false);

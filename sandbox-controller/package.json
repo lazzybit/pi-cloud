@@ -3,11 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "dependencies": {},
   "devDependencies": {
+    "@types/node": "26.6.6",
+    "typescript": "7.0.2",
     "vitest": "5.1.1"
   },
   "scripts": {
-    "test": "vitest run test"
+    "test": "vitest run test",
+    "check": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json"
   }
 }

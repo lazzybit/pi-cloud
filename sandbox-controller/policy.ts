@@ -1,7 +1,13 @@
 import { createHash, randomBytes } from "node:crypto";
-export const hash = (s) =>
+import type { Config, Grants } from "./types.ts";
+export const hash = (s: unknown) =>
   createHash("sha256").update(JSON.stringify(s)).digest("hex");
-export function profile(owner, grants, config, claimUID = null) {
+export function profile(
+  owner: string,
+  grants: Grants,
+  config: Config,
+  claimUID: string | null = null,
+) {
   if (
     !/^[a-f0-9]{64}$/.test(owner) ||
     !grants ||
@@ -16,8 +22,12 @@ export function profile(owner, grants, config, claimUID = null) {
   const binding = hash([owner, claim, claimUID, grants.web, config]);
   return { name: "sb-" + suffix, claim, binding };
 }
-export function pod(profile, grants, config) {
-  const { name, claim, binding } = profile;
+export function pod(
+  bindingProfile: ReturnType<typeof profile>,
+  grants: Grants,
+  config: Config,
+) {
+  const { name, claim, binding } = bindingProfile;
   return {
     apiVersion: "v1",
     kind: "Pod",
@@ -74,7 +84,11 @@ export function pod(profile, grants, config) {
     },
   };
 }
-export function expired(annotations, now, idle) {
+export function expired(
+  annotations: Record<string, string>,
+  now: number,
+  idle: number,
+) {
   return (
     now >=
     Math.max(Number(annotations.activity), Number(annotations.until || 0)) +

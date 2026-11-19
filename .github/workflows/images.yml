@@ -24,7 +24,7 @@ jobs:
           test "$(git ls-tree --name-only HEAD | while read -r f; do if [ -f "$f" ]; then printf '%s ' "$f"; fi; done)" = '.gitignore README.md '
           test ! -d tests
           for pkg in contract harness tui web sandbox sandbox-controller web/test/e2e; do npm --prefix "$pkg" ci; done
-          for pkg in contract harness web; do npm --prefix "$pkg" run check; done
+          for pkg in contract harness web sandbox-controller; do npm --prefix "$pkg" run check; done
           for pkg in contract harness sandbox sandbox-controller; do npm --prefix "$pkg" test; done
           for pkg in harness tui web; do npm --prefix "$pkg" run build; done
       - run: ./node_modules/.bin/playwright install --with-deps chromium
@@ -67,7 +67,7 @@ jobs:
           npm --prefix web/test/e2e test
       - name: Verify controller image modules
         run: |
-          if docker image inspect pi-cloud-sandbox-controller:test >/dev/null 2>&1; then docker run --rm pi-cloud-sandbox-controller:test node --input-type=module -e "await import('./lifecycle.mjs')"; fi
+          if docker image inspect pi-cloud-sandbox-controller:test >/dev/null 2>&1; then docker run --rm pi-cloud-sandbox-controller:test node --input-type=module -e "await import('./dist/lifecycle.js')"; fi
       - name: Save tested images
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.changes.outputs.images != ''
         run: docker save $(for name in $IMAGES; do printf 'pi-cloud-%s:test ' "$name"; done) | gzip -1 > "$RUNNER_TEMP/images.tar.gz"

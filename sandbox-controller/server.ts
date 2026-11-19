@@ -2,7 +2,7 @@ import http from "node:http";
 import https from "node:https";
 import { readFile } from "node:fs/promises";
 import { timingSafeEqual } from "node:crypto";
-import { lifecycle } from "./lifecycle.mjs";
+import { lifecycle } from "./lifecycle.ts";
 const sa = "/var/run/secrets/kubernetes.io/serviceaccount/",
   ns = (await readFile(sa + "namespace", "utf8")).trim(),
   ca = await readFile(sa + "ca.crt");
@@ -11,15 +11,15 @@ const key = process.env.CONTROLLER_KEY || "",
 if (key.length < 32 || !Number.isFinite(idle) || idle < 1000)
   throw Error("invalid controller config");
 const config = {
-  image: process.env.SANDBOX_IMAGE,
+  image: process.env.SANDBOX_IMAGE ?? "",
   runtimeClass: process.env.RUNTIME_CLASS || "",
   revision: process.env.PROFILE_REVISION || "1",
   storageClass: process.env.STORAGE_CLASS || "",
   size: process.env.VOLUME_SIZE || "2Gi",
 };
-async function k(path, method = "GET", data) {
+async function k<T>(path: string, method = "GET", data?: object): Promise<T> {
   const token = (await readFile(sa + "token", "utf8")).trim();
-  return new Promise((resolve, reject) => {
+  return new Promise<T>((resolve, reject) => {
     const q = https.request(
       `https://kubernetes.default.svc/api/v1/namespaces/${ns}/${path}`,
       {
@@ -38,8 +38,8 @@ async function k(path, method = "GET", data) {
         r.on("data", (b) => (s += b));
         r.on("end", () => {
           try {
-            if (r.statusCode === 404 && method === "GET") resolve(null);
-            else if (r.statusCode >= 300)
+            if (r.statusCode === 404 && method === "GET") resolve(null as T);
+            else if (!r.statusCode || r.statusCode >= 300)
               reject(Error("kubernetes " + r.statusCode));
             else resolve(JSON.parse(s));
           } catch (e) {
