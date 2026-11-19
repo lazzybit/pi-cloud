@@ -36,7 +36,7 @@ jobs:
             images=''
             for name in harness sandbox sandbox-controller; do
               pattern="^($name/|\.github/|\.dockerignore)"
-              if [ "$name" = harness ]; then pattern="$pattern|^(contract/|web/|package(-lock)?\.json|vite\.config|tsconfig)"; fi
+              if [ "$name" = harness ]; then pattern="$pattern|^(contract/|web/|package(-lock)?\.json|tsconfig)"; fi
               if grep -Eq "$pattern" "$RUNNER_TEMP/paths"; then images="$images $name"; fi
             done
           fi

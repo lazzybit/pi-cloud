@@ -115,7 +115,7 @@ try {
           ],
           { env, stdio: ["ignore", "pipe", "inherit"] },
         )
-      : spawn(process.execPath, ["dist/server.mjs"], {
+      : spawn(process.execPath, ["harness/dist/server.mjs"], {
           env,
           stdio: ["ignore", "pipe", "inherit"],
         });
@@ -128,7 +128,7 @@ try {
     await writeFile(dir + "/writer.pid", String(app.pid));
   };
   await launch();
-  const test = spawn("npx", ["playwright", "test", ...process.argv.slice(2)], {
+  const test = spawn("npx", ["playwright", "test", "--config=tests/e2e/playwright.config.ts", ...process.argv.slice(2)], {
     env: {
       ...process.env,
       PI_E2E_ORIGIN: origin,

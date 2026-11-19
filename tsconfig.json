@@ -5,20 +5,15 @@
     "moduleResolution": "Bundler",
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "jsx": "preserve",
-    "jsxImportSource": "@solidjs/web",
     "skipLibCheck": true,
     "strict": true,
     "types": [
-      "node",
-      "vite/client"
+      "node"
     ]
   },
   "include": [
     "contract",
-    "web",
     "harness",
-    "tests",
-    "*.ts"
+    "tests"
   ]
 }

@@ -9,7 +9,8 @@
 !harness/
 !harness/*.ts
 !package*.json
-!vite.config.ts
+!web/package.json
+!web/tsconfig.json
 !tsconfig.json
 !sandbox/
 !sandbox/*.c

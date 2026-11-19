@@ -23,7 +23,7 @@ Keep environment manifests and credentials outside this repo. Use a fresh databa
 
 ## Development and CI
 
-Use non-root Linux, Node 26, a C compiler, Python 3.11+, and Landlock ABI 3+ with seccomp. Run `npm ci && npm run guard && npm run check && npm test`. `npm run build` produces the SPA and server in `dist/`. For `npm run e2e`, install Chromium (`npx playwright install chromium`) and point `KC_HOME` at a **fresh disposable** Keycloak 26.4.7 distribution, with Java 21 on PATH or `JAVA_HOME`. The test starts loopback-only Keycloak, temporary PostgreSQL, a streaming fake model, and guarded workers. The local Kubernetes API fixture is not a CSI or cluster isolation test.
+Use non-root Linux, Node 26, a C compiler, Python 3.11+, and Landlock ABI 3+ with seccomp. Run `npm ci && npm run guard && npm run check && npm test`. `npm run build` writes the SPA to `web/dist/` and the server to `harness/dist/`. Web dependencies, Vite and JSX configuration live in `web/`; build just the SPA with `npm run build -w web`. For `npm run e2e`, install Chromium (`npx playwright install chromium`) and point `KC_HOME` at a **fresh disposable** Keycloak 26.4.7 distribution, with Java 21 on PATH or `JAVA_HOME`. The test starts loopback-only Keycloak, temporary PostgreSQL, a streaming fake model, and guarded workers. The local Kubernetes API fixture is not a CSI or cluster isolation test.
 
 PRs test without registry write credentials. Main builds native arm64 candidates, tests them and publishes the same saved images to GHCR tagged by full Git SHA. Deploy by digest, not a moving tag. Product CI does not use a production kubeconfig. The controller still needs qualification on the intended kernel, mesh and CSI before rollout.
 

@@ -102,7 +102,7 @@ const server = http.createServer(async (req, res) => {
       if (path === "/" || path === "/callback" || /^\/c\/\d+$/.test(path)) {
         res
           .writeHead(200, { "content-type": "text/html; charset=utf-8" })
-          .end(readFileSync("dist/index.html"));
+          .end(readFileSync("web/dist/index.html"));
         return;
       }
       if (/^\/assets\/[\w.-]+\.(js|css)$/.test(path)) {
@@ -112,7 +112,7 @@ const server = http.createServer(async (req, res) => {
               ? "text/javascript"
               : "text/css",
           })
-          .end(readFileSync("dist" + path));
+          .end(readFileSync("web/dist" + path));
         return;
       }
     }
