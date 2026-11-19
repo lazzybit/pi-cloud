@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "jsx": "preserve",
+    "jsxImportSource": "@solidjs/web",
+    "skipLibCheck": true,
+    "strict": true,
+    "types": [
+      "node",
+      "vite/client"
+    ]
+  },
+  "include": [
+    "contract",
+    "web",
+    "harness",
+    "tests",
+    "*.ts"
+  ]
+}
