@@ -153,10 +153,10 @@ try {
   };
   await launch();
   const test = spawn(
-    "acceptance/node_modules/.bin/playwright",
+    "system-tests/node_modules/.bin/playwright",
     [
       "test",
-      "--config=acceptance/playwright.config.ts",
+      "--config=system-tests/playwright.config.ts",
       ...process.argv.slice(2),
     ],
     {

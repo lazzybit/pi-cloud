@@ -23,7 +23,7 @@ jobs:
         with: {go-version-file: sandbox-controller/go.mod, cache: false}
       - name: Check and build components
         run: |
-          for pkg in harness acceptance; do npm --prefix "$pkg" ci; done
+          for pkg in harness system-tests; do npm --prefix "$pkg" ci; done
           npm --prefix harness run check
           npm --prefix harness test
           npm --prefix harness run build
@@ -33,7 +33,7 @@ jobs:
           printf 'CONTROLLER_FIXTURE=%s/controller-fixture\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
           printf 'SANDBOXD=%s/sandboxd\nSANDBOX_GUARD=%s/sandbox-guard\n' "$RUNNER_TEMP" "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - run: ./node_modules/.bin/playwright install --with-deps chromium
-        working-directory: acceptance
+        working-directory: system-tests
       - name: Install disposable Keycloak
         run: |
           curl --fail --location --retry 3 -o "$RUNNER_TEMP/kc.tgz" https://github.com/keycloak/keycloak/releases/download/26.4.7/keycloak-26.4.7.tar.gz
@@ -62,11 +62,11 @@ jobs:
           for image in $IMAGES; do
             docker build --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -t "pi-cloud-$image:test" -f "$image/Dockerfile" .
           done
-      - name: Run browser acceptance
+      - name: Run system tests
         run: |
           if docker image inspect pi-cloud-harness:test >/dev/null 2>&1; then export HARNESS_IMAGE=pi-cloud-harness:test; fi
           if docker image inspect pi-cloud-sandbox:test >/dev/null 2>&1; then export WORKER_IMAGE=pi-cloud-sandbox:test; fi
-          timeout 8m npm --prefix acceptance test
+          timeout 8m npm --prefix system-tests test
       - name: Save tested images
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.changes.outputs.images != ''
         run: docker save $(for name in $IMAGES; do printf 'pi-cloud-%s:test ' "$name"; done) | gzip -1 > "$RUNNER_TEMP/images.tar.gz"
