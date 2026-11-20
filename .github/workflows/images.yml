@@ -23,14 +23,17 @@ jobs:
         with: {go-version-file: sandbox-controller/go.mod, cache: false}
       - name: Check and build components
         run: |
-          for pkg in harness sandbox harness/test/e2e; do npm --prefix "$pkg" ci; done
-          for pkg in harness sandbox; do npm --prefix "$pkg" run check && npm --prefix "$pkg" test; done
+          for pkg in harness acceptance; do npm --prefix "$pkg" ci; done
+          npm --prefix harness run check
+          npm --prefix harness test
           npm --prefix harness run build
           node harness/test/check-bundle.ts
-          (cd sandbox-controller && go test -race ./... && go vet ./... && go test -c -o "$RUNNER_TEMP/controller-fixture")
+          (cd sandbox-controller && go test -race ./... && go vet ./... && go test -c -o "$RUNNER_TEMP/controller-fixture" ./cmd/controller)
+          (cd sandbox && go test -race ./... && go vet ./... && CGO_ENABLED=0 go build -o "$RUNNER_TEMP/sandboxd" ./cmd/sandboxd && cc -Os -static guard/guard.c -o "$RUNNER_TEMP/sandbox-guard")
           printf 'CONTROLLER_FIXTURE=%s/controller-fixture\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          printf 'SANDBOXD=%s/sandboxd\nSANDBOX_GUARD=%s/sandbox-guard\n' "$RUNNER_TEMP" "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - run: ./node_modules/.bin/playwright install --with-deps chromium
-        working-directory: harness/test/e2e
+        working-directory: acceptance
       - name: Install disposable Keycloak
         run: |
           curl --fail --location --retry 3 -o "$RUNNER_TEMP/kc.tgz" https://github.com/keycloak/keycloak/releases/download/26.4.7/keycloak-26.4.7.tar.gz
@@ -48,7 +51,7 @@ jobs:
             git diff --name-only "$BASE" HEAD > "$RUNNER_TEMP/paths"
             images=''
             for name in harness sandbox sandbox-controller; do
-              pattern="^($name/|\.github/)"
+              pattern="^($name/|\.github/|sandbox/protocol/|sandbox-controller/protocol/)"
               if grep -Eq "$pattern" "$RUNNER_TEMP/paths"; then images="$images $name"; fi
             done
           fi
@@ -63,7 +66,7 @@ jobs:
         run: |
           if docker image inspect pi-cloud-harness:test >/dev/null 2>&1; then export HARNESS_IMAGE=pi-cloud-harness:test; fi
           if docker image inspect pi-cloud-sandbox:test >/dev/null 2>&1; then export WORKER_IMAGE=pi-cloud-sandbox:test; fi
-          timeout 8m npm --prefix harness/test/e2e test
+          timeout 8m npm --prefix acceptance test
       - name: Save tested images
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.changes.outputs.images != ''
         run: docker save $(for name in $IMAGES; do printf 'pi-cloud-%s:test ' "$name"; done) | gzip -1 > "$RUNNER_TEMP/images.tar.gz"

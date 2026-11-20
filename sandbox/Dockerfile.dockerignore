@@ -1,5 +1,10 @@
 **
 !sandbox/
-!sandbox/guard.c
-!sandbox/package*.json
-!sandbox/worker.ts
+!sandbox/go.mod
+!sandbox/go.sum
+!sandbox/cmd/
+!sandbox/cmd/**
+!sandbox/internal/
+!sandbox/internal/**
+!sandbox/guard/
+!sandbox/guard/guard.c

@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { transcript } from "../src/transcript.ts";
+import { transcript } from "../src/conversations/projection/transcript.ts";
 import type { ConversationView } from "@earendil-works/pi-durable";
 it("keeps repeated provider IDs separate across rounds and does not invent a result", () => {
   const call = {

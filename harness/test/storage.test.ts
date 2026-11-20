@@ -4,8 +4,8 @@ import { Client } from "pg";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { database } from "../src/database.ts";
-import { runtime } from "../src/runtime.ts";
+import { database } from "../src/persistence/pg/database.ts";
+import { runtime } from "../src/conversations/service.ts";
 let pg: PG, client: Client, dir: string;
 beforeAll(async () => {
   dir = await mkdtemp(join(tmpdir(), "pi-vitest-"));
@@ -58,6 +58,18 @@ it("conversation IDs and order survive a fresh harness, without contacting a pro
   const second = await b.create("subject-b");
   expect(second.id).toBeGreaterThan(first.id);
   await b.close();
+});
+it("does not commit a conversation if its owner index cannot be written", async () => {
+  const writer = await runtime(database(client), "http://localhost:1/v1", "unused");
+  const before = (await client.query("SELECT count(*) FROM pi_journal")).rows[0].count;
+  await client.query("ALTER TABLE pi_owner ADD CONSTRAINT owner_fixture CHECK (owner <> 'fixture-rejected')");
+  try {
+    await expect(writer.create("fixture-rejected")).rejects.toThrow();
+    expect((await client.query("SELECT count(*) FROM pi_journal")).rows[0].count).toBe(before);
+  } finally {
+    await client.query("ALTER TABLE pi_owner DROP CONSTRAINT owner_fixture");
+    await writer.close();
+  }
 });
 it("another PostgreSQL session cannot own the same storage", async () => {
   const other = new Client({

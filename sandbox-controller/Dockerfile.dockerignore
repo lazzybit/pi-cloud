@@ -1,4 +1,8 @@
 **
 !sandbox-controller/
-!sandbox-controller/*.go
 !sandbox-controller/go.mod
+!sandbox-controller/go.sum
+!sandbox-controller/cmd/
+!sandbox-controller/cmd/**
+!sandbox-controller/internal/
+!sandbox-controller/internal/**

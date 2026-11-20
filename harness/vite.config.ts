@@ -4,7 +4,7 @@ export default defineConfig({
   plugins: [
     solid({
       ssr: true,
-      start: { middleware: "./src/middleware.ts", nodeServer: true },
+      start: { middleware: "./src/web/middleware.ts", nodeServer: true },
       serverFunctions: true,
     }),
   ],

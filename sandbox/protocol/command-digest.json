@@ -1,0 +1,18 @@
+[
+  {
+    "command": "printf ok",
+    "digest": "ef867f3649ebd4e8f51c08adc29afc0a085e94009c8df5ea259a66f471c44620"
+  },
+  {
+    "command": "printf '你好'",
+    "digest": "aad802a920eaaaa038fa96c12909e01e7675f8c8bc852a0f2fa1ebf6b8511360"
+  },
+  {
+    "command": "printf \"a\"\nexit 7",
+    "digest": "836f4e76f73b9c0878ddbd584d292f6b9815f646241976b40085e91fa7e3f41f"
+  },
+  {
+    "command": " printf \"�\" ",
+    "digest": "0cd4faf7a20f10809f1971e320aafcdc607b9b70b8df46dff3a95de6e000abdb"
+  }
+]
