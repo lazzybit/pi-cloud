@@ -50,7 +50,9 @@ it("conversation IDs and order survive a fresh harness, without contacting a pro
   ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   expect(await b.list("subject-a")).toEqual([first.id]);
   expect(await b.list("subject-b")).toEqual([]);
-  await expect(b.owned("subject-b", first.id)).rejects.toMatchObject({
+  await expect(
+    b.requireConversationOwner("subject-b", first.id),
+  ).rejects.toMatchObject({
     code: "NOT_FOUND",
   });
   const second = await b.create("subject-b");

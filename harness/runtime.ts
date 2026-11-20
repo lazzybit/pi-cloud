@@ -95,7 +95,7 @@ export async function runtime(
           .execute()
       ).map((r) => Number(r.cid));
     },
-    async owned(owner: string, id: number) {
+    async requireConversationOwner(owner: string, id: number) {
       if (
         !(await db
           .selectFrom("pi_owner")

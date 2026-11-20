@@ -9,17 +9,32 @@ async function login(page: Page, user = "first") {
   await page.locator("[type=submit]").click();
   await expect(page.getByRole("button", { name: "新對話" })).toBeEnabled();
 }
-test("PKCE login, stream, reload, stop and durable settings", async ({
-  page,
+test("anonymous page navigation starts login; RPC never redirects to login", async ({
   request,
 }) => {
+  const origin = process.env.PI_E2E_ORIGIN!;
+  const navigation = await request.get("/c/7", { maxRedirects: 0 });
+  expect(navigation.status()).toBe(302);
+  expect(new URL(navigation.headers().location).pathname).toContain(
+    "/protocol/openid-connect/auth",
+  );
+  const rpcPath = "/_server/data/missing";
+  expect((await request.post(rpcPath, { headers: { origin } })).status()).toBe(
+    401,
+  );
   expect(
     (
-      await request.post("/_server/data/missing", {
-        headers: { origin: process.env.PI_E2E_ORIGIN! },
+      await request.post(rpcPath, {
+        headers: { origin: "https://other.invalid" },
       })
     ).status(),
-  ).toBe(401);
+  ).toBe(403);
+  expect((await request.get(rpcPath)).status()).toBe(403);
+  expect((await request.get("/not-a-chat-page")).status()).toBe(404);
+});
+test("PKCE login, stream, reload, stop and durable settings", async ({
+  page,
+}) => {
   await login(page);
   await page.getByRole("button", { name: "新對話" }).click();
   await page.getByLabel("模型", { exact: true }).selectOption("fixture-alt");
@@ -49,6 +64,7 @@ test("second OIDC subject cannot list, watch or mutate first conversation", asyn
   const other = await browser.newPage({ baseURL: process.env.PI_E2E_ORIGIN });
   try {
     await login(other, "second");
+    expect((await other.request.get(`/c/${id}`)).status()).toBe(404);
     const rpcManifest = JSON.parse(
       readFileSync(
         "harness/dist/server/.vite/solid-server-functions.json",

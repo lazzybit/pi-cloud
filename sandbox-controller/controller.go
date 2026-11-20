@@ -44,34 +44,80 @@ func (h *controller) remove(ctx context.Context, p *object) error {
 	_, e := h.k(ctx, "DELETE", "pods/"+p.Metadata.Name, M{"preconditions": M{"uid": p.Metadata.UID, "resourceVersion": p.Metadata.ResourceVersion}})
 	return e
 }
+func isPodReady(pod *object) bool {
+	if pod == nil {
+		return false
+	}
+	for _, condition := range pod.Status.Conditions {
+		if condition.Type == "Ready" && condition.Status == "True" {
+			return true
+		}
+	}
+	return false
+}
+
+func needsReplacement(pod *object, desiredBinding string) bool {
+	if pod == nil {
+		return false
+	}
+	return pod.Metadata.Annotations["binding"] != desiredBinding || pod.Status.Phase == "Failed" || pod.Status.Phase == "Succeeded"
+}
+
+func (h *controller) personalVolume(ctx context.Context, r request) (name, uid string, err error) {
+	if !*r.Grants.Volume {
+		return "", "", nil
+	}
+	name = "pv-" + r.Owner[:48]
+	claim, err := h.k(ctx, "GET", "persistentvolumeclaims/"+name, nil)
+	if err != nil {
+		return "", "", err
+	}
+	if claim == nil {
+		spec := M{"accessModes": []string{"ReadWriteOncePod"}, "resources": M{"requests": M{"storage": h.c.Size}}}
+		if h.c.StorageClass != "" {
+			spec["storageClassName"] = h.c.StorageClass
+		}
+		claim, err = h.k(ctx, "POST", "persistentvolumeclaims", M{"apiVersion": "v1", "kind": "PersistentVolumeClaim", "metadata": M{"name": name, "labels": M{label: managed}, "annotations": M{"owner": r.Owner}}, "spec": spec})
+		if err != nil {
+			return "", "", err
+		}
+	}
+	if claim.Metadata.Annotations["owner"] != r.Owner || claim.Metadata.DeletionTimestamp != "" || claim.Metadata.UID == "" {
+		return "", "", errors.New("invalid personal claim")
+	}
+
+	return name, claim.Metadata.UID, nil
+}
+
 func (h *controller) act(ctx context.Context, r request) (M, error) {
 	if !r.valid() {
 		return nil, errors.New("invalid request")
 	}
 	name := "sb-" + r.Owner[:48]
-	defer h.lock(name)()
-	p, e := h.k(ctx, "GET", "pods/"+name, nil)
-	if e != nil {
-		return nil, e
+	unlock := h.lock(name)
+	defer unlock()
+	pod, err := h.k(ctx, "GET", "pods/"+name, nil)
+	if err != nil {
+		return nil, err
 	}
-	a := map[string]string{}
-	if p != nil {
-		if p.Metadata.Labels[label] != managed || p.Metadata.Annotations["owner"] != r.Owner {
+	annotations := map[string]string{}
+	if pod != nil {
+		if pod.Metadata.Labels[label] != managed || pod.Metadata.Annotations["owner"] != r.Owner {
 			return nil, errors.New("not owned")
 		}
-		a = p.Metadata.Annotations
+		annotations = pod.Metadata.Annotations
 	}
 	now := time.Now().UnixMilli()
 	ms := func(n int64) string { return strconv.FormatInt(n, 10) }
-	mark := func(fields M) (M, error) {
-		_, e := h.k(ctx, "PATCH", "pods/"+name, M{"metadata": M{"resourceVersion": p.Metadata.ResourceVersion, "annotations": fields}})
-		return M{}, e
+	updateAnnotations := func(fields M) (M, error) {
+		_, err := h.k(ctx, "PATCH", "pods/"+name, M{"metadata": M{"resourceVersion": pod.Metadata.ResourceVersion, "annotations": fields}})
+		return M{}, err
 	}
 	endpoint := func() (M, error) {
-		if net.ParseIP(p.Status.PodIP) != nil && len(p.Spec.Containers) > 0 {
-			for _, v := range p.Spec.Containers[0].Env {
+		if net.ParseIP(pod.Status.PodIP) != nil && len(pod.Spec.Containers) > 0 {
+			for _, v := range pod.Spec.Containers[0].Env {
 				if v.Name == "RUNTIME_KEY" && v.Value != "" {
-					return M{"url": "http://" + net.JoinHostPort(p.Status.PodIP, "8282"), "key": v.Value, "uid": p.Metadata.UID}, nil
+					return M{"url": "http://" + net.JoinHostPort(pod.Status.PodIP, "8282"), "key": v.Value, "uid": pod.Metadata.UID}, nil
 				}
 			}
 		}
@@ -79,81 +125,57 @@ func (h *controller) act(ctx context.Context, r request) (M, error) {
 	}
 	switch r.Action {
 	case "fence":
-		if p != nil && p.Metadata.DeletionTimestamp == "" {
-			return M{}, h.remove(ctx, p)
+		if pod != nil && pod.Metadata.DeletionTimestamp == "" {
+			return M{}, h.remove(ctx, pod)
 		}
 		return M{}, nil
 	case "release":
-		if p != nil && p.Metadata.UID == r.Uid && a["lease"] == r.Id {
-			return mark(M{"activity": ms(now), "lease": nil, "until": nil})
+		if pod != nil && pod.Metadata.UID == r.Uid && annotations["lease"] == r.Id {
+			return updateAnnotations(M{"activity": ms(now), "lease": nil, "until": nil})
 		}
 		return M{}, nil
 	case "lookup":
-		if p != nil && p.Metadata.UID == r.Uid && p.Metadata.DeletionTimestamp == "" {
+		if pod != nil && pod.Metadata.UID == r.Uid && pod.Metadata.DeletionTimestamp == "" {
 			return endpoint()
 		}
 		return M{"missing": true}, nil
 	}
 	pending := M{"pending": true}
-	if p != nil && p.Metadata.DeletionTimestamp != "" {
+	if pod != nil && pod.Metadata.DeletionTimestamp != "" {
 		return pending, nil
 	}
-	claim, uid := "", ""
-	if *r.Grants.Volume {
-		claim = "pv-" + r.Owner[:48]
-		q, e := h.k(ctx, "GET", "persistentvolumeclaims/"+claim, nil)
-		if e != nil {
-			return nil, e
-		}
-		if q == nil {
-			spec := M{"accessModes": []string{"ReadWriteOncePod"}, "resources": M{"requests": M{"storage": h.c.Size}}}
-			if h.c.StorageClass != "" {
-				spec["storageClassName"] = h.c.StorageClass
-			}
-			q, e = h.k(ctx, "POST", "persistentvolumeclaims", M{"apiVersion": "v1", "kind": "PersistentVolumeClaim", "metadata": M{"name": claim, "labels": M{label: managed}, "annotations": M{"owner": r.Owner}}, "spec": spec})
-			if e != nil {
-				return nil, e
-			}
-		}
-		if q.Metadata.Annotations["owner"] != r.Owner || q.Metadata.DeletionTimestamp != "" || q.Metadata.UID == "" {
-			return nil, errors.New("invalid personal claim")
-		}
-		uid = q.Metadata.UID
+	claim, claimUID, err := h.personalVolume(ctx, r)
+	if err != nil {
+		return nil, err
 	}
-	b := binding(r, h.c, uid)
-	if p != nil && (a["binding"] != b || p.Status.Phase == "Failed" || p.Status.Phase == "Succeeded") {
-		return pending, h.remove(ctx, p)
+	desiredBinding := binding(r, h.c, claimUID)
+	if needsReplacement(pod, desiredBinding) {
+		return pending, h.remove(ctx, pod)
 	}
-	ready := false
-	if p != nil {
-		for _, c := range p.Status.Conditions {
-			if c.Type == "Ready" && c.Status == "True" {
-				ready = true
-			}
-		}
-	}
-	until, _ := strconv.ParseInt(a["until"], 10, 64)
+	ready := isPodReady(pod)
+	leaseExpiresAt, _ := strconv.ParseInt(annotations["until"], 10, 64)
 	if r.Action == "check" {
-		return M{"valid": ready && p.Metadata.UID == r.Uid && a["lease"] == r.Id && until > now}, nil
+		return M{"valid": ready && pod.Metadata.UID == r.Uid && annotations["lease"] == r.Id && leaseExpiresAt > now}, nil
 	}
-	if p == nil {
-		_, e = h.k(ctx, "POST", "pods", manifest(r, h.c, claim, b, now))
-		return pending, e
+	if pod == nil {
+		_, err = h.k(ctx, "POST", "pods", manifest(r, h.c, claim, desiredBinding, now))
+		return pending, err
 	}
 	if !ready {
 		return pending, nil
 	}
 	if r.Action == "warm" {
-		if a["lastWarm"] != r.Id {
-			_, e = mark(M{"activity": ms(now), "lastWarm": r.Id})
+		if annotations["lastWarm"] != r.Id {
+			_, err = updateAnnotations(M{"activity": ms(now), "lastWarm": r.Id})
 		}
-		return M{"ready": true}, e
+		return M{"ready": true}, err
 	}
-	if a["lease"] != "" && a["lease"] != r.Id && until > now {
+	leasedToAnotherCall := annotations["lease"] != "" && annotations["lease"] != r.Id && leaseExpiresAt > now
+	if leasedToAnotherCall {
 		return pending, nil
 	}
-	if _, e = mark(M{"lease": r.Id, "until": ms(now + 90000)}); e != nil {
-		return nil, e
+	if _, err = updateAnnotations(M{"lease": r.Id, "until": ms(now + 90000)}); err != nil {
+		return nil, err
 	}
 	return endpoint()
 }
