@@ -40,8 +40,12 @@ func (r request) valid() bool {
 
 type config struct{ Image, RuntimeClass, Revision, StorageClass, Size string }
 
+// A pod-private UID mapping keeps the command guard's per-UID task budget local
+// to one sandbox. The in-container UID and ownership on personal volumes stay stable.
+const shareHostUsers = false
+
 func binding(r request, c config, claimUID string) string {
-	b, _ := json.Marshal([]any{r.Owner, r.Grants, c, claimUID})
+	b, _ := json.Marshal([]any{r.Owner, r.Grants, c, claimUID, shareHostUsers})
 	s := sha256.Sum256(b)
 	return hex.EncodeToString(s[:])
 }
@@ -64,5 +68,6 @@ func manifest(r request, c config, claim, b string, now int64) M {
 	if c.RuntimeClass != "" {
 		spec["runtimeClassName"] = c.RuntimeClass
 	}
+	spec["hostUsers"] = shareHostUsers
 	return M{"apiVersion": "v1", "kind": "Pod", "metadata": M{"name": "sb-" + r.Owner[:48], "labels": M{label: managed}, "annotations": M{"owner": r.Owner, "binding": b, "activity": strconv.FormatInt(now, 10)}}, "spec": spec}
 }
