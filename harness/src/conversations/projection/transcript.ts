@@ -1,4 +1,6 @@
 import type { ConversationView, LiveState } from "@earendil-works/pi-durable";
+import type { CodemodeNestedCall } from "@earendil-works/pi-durable/codemode";
+import type { Result } from "../../tools/cmd/executor.ts";
 import type { Snapshot, ToolCall } from "../../web/schema.ts";
 
 function text(content: unknown): string {
@@ -17,6 +19,27 @@ function terminalResult(raw: string) {
     if (r && (typeof r.exitCode === "number" || r.state === "unknown"))
       return r;
   } catch {}
+}
+function commandOutput(call: ToolCall, result: Result) {
+  call.stderr = result.stderr;
+  if ("exitCode" in result) {
+    call.stdout = result.stdout;
+    call.exitCode = result.exitCode;
+    call.status = result.timedOut ? "timeout" : result.exitCode === 0 ? "done" : "failed";
+  } else call.status = "unknown";
+}
+function completedChildren(call: ToolCall, details: unknown) {
+  const rows = (details as { calls?: (CodemodeNestedCall & { result?: Result | null })[] } | undefined)?.calls;
+  if (!rows?.length) return;
+  call.children = rows.map((row) => {
+    const child: ToolCall = {
+      id: `${call.id}/c${row.id}`, name: row.name, arguments: row.args,
+      status: row.status === "ok" ? "done" : row.status === "error" ? "failed" : "cancelled",
+      durationMs: row.durationMs, output: row.error,
+    };
+    if (row.name === "cmd" && row.result) commandOutput(child, row.result);
+    return child;
+  });
 }
 export function transcript(view: Pick<ConversationView, "entries" | "docs">) {
   const live = view.docs["pi.live"] as LiveState | undefined;
@@ -61,19 +84,10 @@ export function transcript(view: Pick<ConversationView, "entries" | "docs">) {
         const raw = text(m.content),
           r = call.name === "cmd" ? terminalResult(raw) : undefined;
         call.durationMs = m.durationMs;
-        call.status =
-          r?.state === "unknown"
-            ? "unknown"
-            : r?.timedOut
-              ? "timeout"
-              : m.isError || (r && r.exitCode !== 0)
-                ? "failed"
-                : "done";
-        if (r) {
-          call.stdout = r.stdout;
-          call.stderr = r.stderr;
-          call.exitCode = r.exitCode;
-        } else call.output = raw;
+        call.status = m.isError ? "failed" : "done";
+        if (r) commandOutput(call, r);
+        else call.output = raw;
+        if (call.name === "codemode") completedChildren(call, m.details);
       }
     }
   }
@@ -94,6 +108,19 @@ export function transcript(view: Pick<ConversationView, "entries" | "docs">) {
     call.output = slot.output;
     call.stdout = d?.stdout;
     call.stderr = d?.stderr;
+  }
+  for (const slot of live?.nestedTools ?? []) {
+    const parent = pending.get(slot.parentCallId);
+    if (parent?.name !== "codemode") continue;
+    const d = slot.details as { phase?: string; stdout?: string; stderr?: string } | undefined;
+    (parent.children ??= []).push({
+      id: slot.callId, name: slot.name, arguments: JSON.stringify(slot.arguments, null, 2),
+      status: slot.status === "done" ? (slot.summary ? slot.summary.isError ? "failed" : "done" : "unknown")
+        : slot.status === "pending" || d?.phase === "queued" ? "pending"
+        : d?.phase === "preparing" ? "preparing" : "running",
+      stdout: d?.stdout, stderr: d?.stderr, output: slot.output ?? slot.summary?.error,
+      durationMs: slot.summary?.durationMs,
+    });
   }
   return { messages, partial: text(live?.generation?.message?.content) };
 }

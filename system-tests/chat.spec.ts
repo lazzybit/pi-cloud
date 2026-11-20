@@ -128,6 +128,107 @@ test("tool streams while collapsed, reload does not run it again", async ({
   await expect(card).not.toHaveAttribute("open", "");
 });
 
+test("Code Mode composes sandbox commands and keeps child output after reload", async ({ page }) => {
+  await login(page);
+  await page.getByRole("button", { name: "新對話" }).click();
+  await page.getByLabel("訊息").fill("fixture codemode");
+  await page.getByLabel("訊息").press("Enter");
+  const card = page.locator("details.tool-call").filter({ has: page.locator("summary code", { hasText: "codemode" }) });
+  const summary = card.locator(":scope > summary");
+  const children = card.locator("details.tool-call");
+  await expect(summary).toContainText("執行中", { timeout: 12000 });
+  await expect(card).not.toHaveAttribute("open", "");
+  await summary.click();
+  const second = children.nth(1);
+  await second.locator("summary").click();
+  await expect(second.locator("[data-stream=stdout]")).toHaveText("cm-live");
+  await expect(second.locator("[data-stream=stdout]")).toHaveText("cm-live:cm-value");
+  await expect(second.getByText("退出碼：0", { exact: true })).toBeVisible();
+  await expect(page.locator("[data-role=assistant] p").last()).toContainText('"joined":"cm-live:cm-value"');
+  await expect(page.locator("[data-role=assistant] p").last()).toContainText('"isolated":true');
+  await expect(second).toHaveAttribute("open", "");
+  await page.reload();
+  await expect(summary).toContainText("已完成");
+  await expect(card).not.toHaveAttribute("open", "");
+  await summary.click();
+  await expect(children).toHaveCount(2);
+  await second.locator("summary").click();
+  await expect(second.locator("[data-stream=stdout]")).toHaveText("cm-live:cm-value");
+});
+
+async function startScript(page: Page, prompt: string) {
+  await login(page);
+  await page.getByRole("button", { name: "新對話" }).click();
+  await page.getByLabel("訊息").fill(prompt);
+  await page.getByLabel("訊息").press("Enter");
+  return page.locator("[data-role=assistant] p").last();
+}
+
+function sandboxFile(name: string) {
+  const dir = process.env.PI_E2E_DIR!;
+  for (const entry of readdirSync(dir)) {
+    try { return readFileSync(`${dir}/${entry}/${name}`, "utf8"); }
+    catch {}
+  }
+  return "";
+}
+
+function crashWriter() {
+  if (process.env.PI_E2E_CONTAINER)
+    execFileSync("docker", ["kill", "pi-writer-test"]);
+  else
+    process.kill(Number(readFileSync(process.env.PI_E2E_DIR! + "/writer.pid", "utf8")), "SIGKILL");
+}
+
+test("Code Mode replays a completed command and observes an in-flight command after writer loss", async ({ page }) => {
+  const answer = await startScript(page, "fixture codemode recovery");
+  await expect.poll(() => sandboxFile("cm-second"), { timeout: 12000 }).toBe("y");
+  expect(sandboxFile("cm-first")).toBe("x");
+  crashWriter();
+  await expect(answer).toContainText('"result":"waitingrecovered-seed"', { timeout: 35000 });
+  await expect(answer).toContainText('"denied":true');
+  expect(sandboxFile("cm-first")).toBe("x");
+  expect(sandboxFile("cm-second")).toBe("y");
+  expect(sandboxFile("cm-third")).toBe("");
+});
+
+test("Code Mode cannot dispatch a new command after the runner grant is revoked", async ({ page }) => {
+  const setMembership = await fixtureMembership("runners");
+  await startScript(page, "fixture codemode revoke");
+  const card = page.locator("details.tool-call").filter({ has: page.locator("summary code", { hasText: "codemode" }) });
+  await card.locator(":scope > summary").click();
+  const first = card.locator("details.tool-call").first();
+  await first.locator("summary").click();
+  await expect(first.locator("[data-stream=stdout]")).toHaveText("revoke-ready");
+  try {
+    await setMembership(false);
+    await expect(card.locator(":scope > summary")).toContainText("失敗", { timeout: 15000 });
+    expect(sandboxFile("cm-revoked")).toBe("");
+  } finally {
+    await setMembership(true);
+  }
+});
+
+test("Code Mode Stop cancels a running command without starting its successor", async ({ page }) => {
+  await startScript(page, "fixture codemode stop");
+  const card = page.locator("details.tool-call").filter({ has: page.locator("summary code", { hasText: "codemode" }) });
+  await card.locator(":scope > summary").click();
+  const first = card.locator("details.tool-call").first();
+  await first.locator("summary").click();
+  await expect(first.locator("[data-stream=stdout]")).toHaveText("stop-ready");
+  await page.getByRole("button", { name: "停止" }).click();
+  await expect(page.getByRole("status")).toHaveText("stopped");
+  await page.waitForTimeout(4200); // The command would have written both markers by now without cancellation.
+  expect(sandboxFile("cm-stopped")).toBe("");
+  expect(sandboxFile("cm-after-stop")).toBe("");
+});
+
+test("Code Mode caps calls before dispatching over-limit work", async ({ page }) => {
+  const answer = await startScript(page, "fixture codemode limit");
+  await expect(answer).toContainText("Code Mode call limit exceeded");
+  expect(sandboxFile("cm-over-limit")).toBe("");
+});
+
 test("a sandbox command uses native HTTP without a proxy or network grant", async ({
   page,
 }) => {
@@ -163,11 +264,21 @@ test("Keycloak re-evaluates group removal even with the original access token", 
   );
   expect(response.ok).toBe(true);
   const bearer = (await response.json()).access_token;
-  const issuer = process.env.PI_E2E_ISSUER!,
-    base = new URL(issuer).origin;
+  const issuer = process.env.PI_E2E_ISSUER!;
   process.env.OIDC_ISSUER = issuer;
   process.env.OIDC_AUDIENCE = "api";
   expect(await permissions(bearer)).toEqual({ volume: true });
+  const setMembership = await fixtureMembership("disk");
+  try {
+    await setMembership(false);
+    expect(await permissions(bearer)).toEqual({ volume: false });
+  } finally {
+    await setMembership(true);
+  }
+});
+
+async function fixtureMembership(groupName: string) {
+  const base = new URL(process.env.PI_E2E_ISSUER!).origin;
   const auth = await fetch(
     base + "/realms/master/protocol/openid-connect/token",
     {
@@ -189,17 +300,12 @@ test("Keycloak re-evaluates group removal even with the original access token", 
       await fetch(admin + "/users?username=first&exact=true", { headers })
     ).json(),
     groups = await (await fetch(admin + "/groups", { headers })).json();
-  const group = groups.find((g: { name: string }) => g.name === "disk");
+  const group = groups.find((g: { name: string }) => g.name === groupName);
   const membership = `${admin}/users/${users[0].id}/groups/${group.id}`;
-  try {
-    expect((await fetch(membership, { method: "DELETE", headers })).ok).toBe(
-      true,
-    );
-    expect(await permissions(bearer)).toEqual({ volume: false });
-  } finally {
-    expect((await fetch(membership, { method: "PUT", headers })).ok).toBe(true);
-  }
-});
+  return async (member: boolean) => {
+    expect((await fetch(membership, { method: member ? "PUT" : "DELETE", headers })).ok).toBe(true);
+  };
+}
 test("writer loss observes existing call without a second side effect", async ({
   page,
 }) => {
@@ -207,20 +313,9 @@ test("writer loss observes existing call without a second side effect", async ({
   await page.getByRole("button", { name: "新對話" }).click();
   await page.getByLabel("訊息").fill("fixture interrupted cmd");
   await page.getByLabel("訊息").press("Enter");
-  const dir = process.env.PI_E2E_DIR!;
-  const marker = () => {
-    for (const e of readdirSync(dir)) {
-      try {
-        return readFileSync(`${dir}/${e}/claimed`, "utf8");
-      } catch {}
-    }
-    return "";
-  };
+  const marker = () => sandboxFile("claimed");
   await expect.poll(marker, { timeout: 12000 }).toBe("x");
-  if (process.env.PI_E2E_CONTAINER)
-    execFileSync("docker", ["kill", "pi-writer-test"]);
-  else
-    process.kill(Number(readFileSync(dir + "/writer.pid", "utf8")), "SIGKILL");
+  crashWriter();
   await expect(page.locator("[data-role=assistant] p").last()).toContainText(
     "recovered-result",
     { timeout: 35000 },

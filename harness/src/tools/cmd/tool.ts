@@ -6,6 +6,10 @@ import { permissions } from "../../identity/auth.ts";
 import { CmdExecutor } from "./executor.ts";
 import { lifecycleClient, workerClient } from "./clients.ts";
 import { callLedger } from "../../persistence/pg/call-ledger.ts";
+import { type } from "arktype";
+
+const commandResult = type({ stdout: "string", stderr: "string", exitCode: "number.integer", timedOut: "boolean" })
+  .or({ state: "'unknown'", stderr: "string" });
 
 export function terminalAdapter(db: Database, controllerURL: string, key: string) {
   if (!key || key.length < 32) throw Error("controller credential required");
@@ -14,6 +18,7 @@ export function terminalAdapter(db: Database, controllerURL: string, key: string
     name: "cmd",
     description: "Run a bounded shell command in the authorized sandbox. Never repeat a command with an unknown outcome.",
     parameters: obj({ command: str() }),
+    structuredOutputSchema: commandResult.toJsonSchema(),
     replay: "safe",
     execute: async ({ command }, api, ctx) => {
       const cid = Number(api.conversationId);
@@ -21,6 +26,7 @@ export function terminalAdapter(db: Database, controllerURL: string, key: string
       const result = await executor.execute({ cid, id, command, signal: ctx.abortSignal, progress: async (details) => { await api.details(details, ctx); } });
       return {
         details: null,
+        structuredOutput: result,
         isError: !("exitCode" in result) || result.exitCode !== 0,
         output: [{ type: "text" as const, text: JSON.stringify(result) }],
       };

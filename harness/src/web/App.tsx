@@ -14,6 +14,7 @@ const toolStatus = {
   running: "執行中",
   done: "已完成",
   failed: "失敗",
+  cancelled: "已取消",
   timeout: "逾時",
   unknown: "結果未知",
 } as const;
@@ -48,6 +49,9 @@ function ToolCard(props: { call: ToolCall }) {
         </>
       )}
       {c().exitCode !== undefined && <small>退出碼：{c().exitCode}</small>}
+      <For each={c().children} keyed={(child) => child.id}>
+        {(child) => <ToolCard call={child()} />}
+      </For>
     </details>
   );
 }

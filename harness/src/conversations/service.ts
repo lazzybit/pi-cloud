@@ -7,6 +7,7 @@ import { migrateWriter } from "../persistence/pg/migrations.ts";
 import { productOwner } from "./ownership.ts";
 import { PgStorage } from "../persistence/pg/storage.ts";
 import { terminalAdapter } from "../tools/cmd/tool.ts";
+import { codeMode } from "../tools/codemode.ts";
 import { transcript } from "./projection/transcript.ts";
 import { gateway } from "../agent/provider.ts";
 import type { Snapshot, Settings } from "../web/schema.ts";
@@ -25,6 +26,8 @@ export async function runtime(
     ? terminalAdapter(db, process.env.CONTROLLER_URL, process.env.CONTROLLER_KEY!)
     : undefined;
   if (cmd) registry.install(cmd.extension);
+  const scripts = cmd ? codeMode() : undefined;
+  if (scripts) registry.install(scripts.extension);
   const terminal = cmd?.executor;
   const h = await Harness.open(
     store,
@@ -69,10 +72,11 @@ export async function runtime(
       )
     ).items[0];
   return {
-    close: () => {
+    close: async () => {
       clearInterval(refresh);
       terminal?.close();
-      return h.close(c);
+      try { await h.close(c); }
+      finally { await scripts?.close(); }
     },
     create: async (owner: string) => {
       const model = defaultModel();

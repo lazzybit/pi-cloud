@@ -12,6 +12,8 @@ Register only the exact `/callback` URI, limit the API audience to admitted user
 
 The sandbox does not impose its own process-count limit. A Linux UID may be shared with unrelated Pods, so the guard leaves the inherited `RLIMIT_NPROC` unchanged. CPU and memory limits do not guarantee protection against node PID exhaustion.
 
+With sandbox tools enabled, the model can call `cmd` directly or use `codemode` to combine calls in JavaScript. Pi Durable runs scripts in QuickJS/WASM in the harness, without direct host filesystem or network access. `tools.cmd({ command })` uses the same sandbox and rechecks the turn caller's grants before each new dispatch. On writer restart, the script replays recorded results, checks already-dispatched calls on their original worker, and cannot dispatch new commands without the original authorization. The chat shows child calls inside the collapsed Code Mode card. The harness limits scripts to 16 KiB of source, 180 seconds, 16 calls (including tool discovery), 32 MiB of QuickJS memory, and 2,048 model-output tokens, with at most four script workers per harness.
+
 Release the three components together. The new dispatch protocol requires a short-lived controller ticket bound to the Pod UID, worker boot ID, call ID and UTF-8 command digest. A worker management credential can observe and cancel but cannot issue a ticket. Ticket validation does not replace workload transport authentication or encryption. Pin the worker image by digest in the controller and plan the cutover so incompatible generations cannot receive new commands.
 
 ## Local verification

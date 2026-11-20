@@ -13,6 +13,23 @@ const commands: Record<string, string> = {
   "fixture tool progress": `exec python3 -u -c "import sys,time; print('begin',end=''); time.sleep(3); sys.stderr.write('problem'); sys.exit(7)"`,
   "fixture native network": `exec python3 -c 'import urllib.request; assert not urllib.request.getproxies(); print(urllib.request.urlopen("http://localhost:35322/fixture-network", timeout=3).read().decode())'`,
 };
+const scripts: Record<string, string> = {
+  "fixture codemode": `const first = await tools.cmd({command: "printf 'cm-value'"});
+const next = await tools.cmd({command: "printf 'cm-live'; sleep 3; printf ':'; printf '" + first.stdout + "'"});
+return { joined: next.stdout, exitCode: next.exitCode, isolated: [typeof fetch, typeof process, typeof require].every(t => t === "undefined") };`,
+  "fixture codemode recovery": `const first = await tools.cmd({command: "printf x >> cm-first; printf seed"});
+const second = await tools.cmd({command: "printf y >> cm-second; printf 'waiting'; sleep 5; printf 'recovered-'"});
+let denied = false;
+try { await tools.cmd({command: "printf z >> cm-third"}); } catch { denied = true; }
+return { result: second.stdout + first.stdout, denied };`,
+  "fixture codemode revoke": `const first = await tools.cmd({command: "printf 'revoke-ready'; sleep 5"});
+await tools.cmd({command: "printf z >> cm-revoked"});
+return 'unexpected';`,
+  "fixture codemode stop": `await tools.cmd({command: "printf 'stop-ready'; sleep 4; printf z >> cm-stopped"});
+await tools.cmd({command: "printf z >> cm-after-stop"});`,
+  "fixture codemode limit": `for (let i = 0; i < 16; i++) await searchTools("cmd");
+await tools.cmd({command: "printf z >> cm-over-limit"});`,
+};
 export function fake() {
   return http.createServer(async (req, res) => {
     if (req.url === "/fixture-network") {
@@ -38,8 +55,10 @@ export function fake() {
     const last = input.at(-1);
     const prompt = last?.role === "user" ? last.content.find((p) => p.type === "input_text")?.text : undefined;
     const command = prompt && Object.hasOwn(commands, prompt) ? commands[prompt] : undefined;
-    if (command && !tools?.some((t) => t.type === "function" && t.name === "cmd")) {
-      res.writeHead(400).end("Expected cmd tool in Responses format");
+    const code = prompt && Object.hasOwn(scripts, prompt) ? scripts[prompt] : undefined;
+    const tool = code ? "codemode" : "cmd";
+    if ((command || code) && !tools?.some((t) => t.type === "function" && t.name === tool)) {
+      res.writeHead(400).end(`Expected ${tool} tool in Responses format`);
       return;
     }
     const id = randomUUID();
@@ -49,9 +68,9 @@ export function fake() {
     }
     const response = (status, output) => ({ id: `resp_${id}`, object: "response", model, status, output });
     event("response.created", { response: response("in_progress", []) });
-    if (command) {
-      const call = { type: "function_call", id: `fc_${id}`, call_id: `call_${id}`, name: "cmd" };
-      const args = JSON.stringify({ command });
+    if (command || code) {
+      const call = { type: "function_call", id: `fc_${id}`, call_id: `call_${id}`, name: tool };
+      const args = JSON.stringify(code ? { code } : { command });
       event("response.output_item.added", { output_index: 0, item: { ...call, arguments: "", status: "in_progress" } });
       event("response.function_call_arguments.delta", { output_index: 0, item_id: call.id, delta: args });
       const item = { ...call, arguments: args, status: "completed" };

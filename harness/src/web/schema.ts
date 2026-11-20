@@ -36,6 +36,7 @@ export type ToolCall = {
     | "running"
     | "done"
     | "failed"
+    | "cancelled"
     | "unknown"
     | "timeout";
   stdout?: string;
@@ -43,6 +44,7 @@ export type ToolCall = {
   output?: string;
   exitCode?: number;
   durationMs?: number;
+  children?: ToolCall[];
 };
 export type Snapshot = {
   id: number;
