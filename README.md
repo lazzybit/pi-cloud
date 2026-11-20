@@ -8,6 +8,8 @@ A private, recoverable chat application. `harness/` contains the Solid 2 SSR int
 
 Set `PUBLIC_ORIGIN`, `OIDC_ISSUER`, `OIDC_AUDIENCE`, `OIDC_CLIENT_ID`, `DATABASE_URL`, `MODEL_ID`, `MODEL_BASE_URL` and optional `MODEL_CHOICES` on the harness. Register only the exact `/callback` URI, limit the API audience to admitted users, and configure `sandbox#execute`, `sandbox#persistent-volume`, `sandbox#egress-web` as separate Keycloak permissions. `CONTROLLER_URL` and `CONTROLLER_KEY` enable tool execution. The controller needs the same internal key, `SANDBOX_IMAGE` by digest, optional `STORAGE_CLASS`, `VOLUME_SIZE`, `RUNTIME_CLASS`, `PROFILE_REVISION`, `IDLE_SECONDS` (600 by default). It needs Pod get/list/create/patch/delete and PVC get/create in a dedicated namespace. Keep controller and workers private, with authenticated workload transport and enforced ingress policy. Only the harness handles browser traffic; production requires HTTPS. Session expiry requires signing in again.
 
+The sandbox does not impose its own process-count limit. A Linux UID may be shared with unrelated Pods, so the guard leaves the inherited `RLIMIT_NPROC` unchanged. CPU and memory limits do not guarantee protection against node PID exhaustion.
+
 ## Local verification
 
 Use Node 26, Go as pinned in `sandbox-controller/go.mod`, a C compiler and Linux with Landlock and seccomp. In `harness/` and `sandbox/`: `npm ci && npm run check && npm test`. Build the full-stack app with `npm --prefix harness run build`; check browser-only content and the Brotli JS budget with `node harness/check-bundle.ts`. From `sandbox-controller/` run `go test -race ./... && go vet ./...`.
