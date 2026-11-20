@@ -86,7 +86,7 @@ try {
     DATABASE_URL: `postgres://postgres:${password}@127.0.0.1:35321/postgres`,
     MODEL_BASE_URL: "http://127.0.0.1:35322/v1",
     MODEL_ID: "fixture",
-    MODEL_CHOICES: "fixture-alt",
+    MODEL_CHOICES: "fixture-alt,gpt-5.2,gpt-4.1-mini",
     OIDC_ISSUER: issuer,
 
     OIDC_AUDIENCE: "api",

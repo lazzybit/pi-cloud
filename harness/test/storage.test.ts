@@ -71,6 +71,30 @@ it("does not commit a conversation if its owner index cannot be written", async 
     await writer.close();
   }
 });
+it("offers and validates the configured model's thinking levels", async () => {
+  const app = await runtime(
+    database(client), "http://localhost:1/v1", "gpt-5.2", "gpt-4.1-mini,fixture-alt",
+  );
+  try {
+    const { id } = await app.create("subject-a");
+    const watch = app.watch(id);
+    try {
+      expect((await watch.next()).value?.models).toEqual([
+        { id: "gpt-5.2", efforts: ["default", "low", "medium", "high", "xhigh"] },
+        { id: "gpt-4.1-mini", efforts: ["default"] },
+        { id: "fixture-alt", efforts: ["default", "low", "medium", "high"] },
+      ]);
+    } finally {
+      await watch.return();
+    }
+    await expect(app.configure(id, { model: "gpt-4.1-mini", effort: "high" }))
+      .rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(app.configure(id, { model: "gpt-5.2", effort: "xhigh" }))
+      .resolves.toEqual({ model: "gpt-5.2", effort: "xhigh" });
+  } finally {
+    await app.close();
+  }
+});
 it("another PostgreSQL session cannot own the same storage", async () => {
   const other = new Client({
     port: 35324,

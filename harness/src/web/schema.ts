@@ -14,9 +14,10 @@ export const stopInput = type({
   requestId: "string.uuid",
   "+": "reject",
 });
+const effort = type.enumerated("default", "minimal", "low", "medium", "high", "xhigh", "max");
 export const settings = type({
   model: "1 <= string <= 128",
-  effort: "'default' | 'low' | 'medium' | 'high'",
+  effort,
   "+": "reject",
 });
 export const configureInput = type({
@@ -46,7 +47,7 @@ export type ToolCall = {
 export type Snapshot = {
   id: number;
   settings: Settings;
-  models: string[];
+  models: { id: string; efforts: Settings["effort"][] }[];
   messages: {
     key: string;
     role: "user" | "assistant";

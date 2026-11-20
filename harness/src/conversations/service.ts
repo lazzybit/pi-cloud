@@ -1,4 +1,5 @@
 import { Harness, createRegistry } from "@earendil-works/pi-durable";
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/models";
 import type { ConversationId } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT as c } from "@earendil-works/chord/context";
 import { RpcError } from "./errors.ts";
@@ -17,7 +18,7 @@ export async function runtime(
   model: string,
   extraModels = "",
 ) {
-  const models = [
+  const modelIds = [
     ...new Set([
       model,
       ...extraModels
@@ -35,9 +36,16 @@ export async function runtime(
     : undefined;
   if (cmd) registry.install(cmd.extension);
   const terminal = cmd?.executor;
+  const modelRegistry = gateway(baseUrl, modelIds);
+  const models: Snapshot["models"] = modelRegistry
+    .getModels("agentgateway")
+    .map((model) => ({
+      id: model.id,
+      efforts: ["default", ...getSupportedThinkingLevels(model).filter((level) => level !== "off")],
+    }));
   const h = await Harness.open(
     store,
-    { models: gateway(baseUrl, models), registry },
+    { models: modelRegistry, registry },
     c,
   );
   h.resume();
@@ -106,8 +114,11 @@ export async function runtime(
         });
     },
     async configure(id: number, settings: Settings) {
-      if (!models.includes(settings.model))
+      const selected = models.find((model) => model.id === settings.model);
+      if (!selected)
         throw new RpcError("BAD_REQUEST", { message: "Unknown model" });
+      if (!selected.efforts.includes(settings.effort))
+        throw new RpcError("BAD_REQUEST", { message: "Unsupported thinking level for this model" });
       const v = await conv(id);
       return exclusive(async () => {
         const t = await latest(v.id);
@@ -206,7 +217,7 @@ export async function runtime(
           const agent = value.docs["pi.agent"] as
             | {
                 model?: { modelId: string };
-                thinkingLevel?: "low" | "medium" | "high" | "off";
+                thinkingLevel?: Exclude<Settings["effort"], "default"> | "off";
               }
             | undefined;
           const settings: Settings = {

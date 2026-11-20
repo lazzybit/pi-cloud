@@ -4,6 +4,16 @@ const transport = () => import("./transport.ts");
 import type { Snapshot, Settings, ToolCall } from "./schema.ts";
 import "./web.css";
 
+const effortLabel = {
+  default: "模型預設",
+  minimal: "最低",
+  low: "低",
+  medium: "中",
+  high: "高",
+  xhigh: "極高",
+  max: "最高",
+} satisfies Record<Settings["effort"], string>;
+
 const toolStatus = {
   pending: "等待中",
   preparing: "啟動沙箱中",
@@ -133,6 +143,10 @@ export default function App() {
   async function configure(change: Partial<Settings>) {
     const s = snap();
     if (!s || busy() || s.state === "running") return;
+    const settings = { ...s.settings, ...change };
+    const model = s.models.find((m) => m.id === settings.model);
+    if (change.model && !model?.efforts.includes(settings.effort))
+      settings.effort = "default";
     lock(true);
     const current = sub;
     try {
@@ -140,7 +154,7 @@ export default function App() {
         await transport()
       ).configure({
         id: s.id,
-        settings: { ...s.settings, ...change },
+        settings,
       });
       if (sub === current) set((prev) => prev && { ...prev, settings: saved });
     } catch {
@@ -152,6 +166,10 @@ export default function App() {
       if (sub === current) lock(false);
     }
   }
+  const efforts = () => {
+    const s = snap();
+    return s?.models.find((model) => model.id === s.settings.model)?.efforts;
+  };
   if (typeof window !== "undefined") queueMicrotask(() => void init());
   return (
     <main>
@@ -178,8 +196,8 @@ export default function App() {
           >
             <For each={snap()?.models}>
               {(m) => (
-                <option value={m} selected={m === snap()?.settings.model}>
-                  {m}
+                <option value={m.id} selected={m.id === snap()?.settings.model}>
+                  {m.id}
                 </option>
               )}
             </For>
@@ -195,17 +213,10 @@ export default function App() {
               })
             }
           >
-            <For each={["default", "low", "medium", "high"] as const}>
+            <For each={efforts()}>
               {(v) => (
                 <option value={v} selected={v === snap()?.settings.effort}>
-                  {
-                    {
-                      default: "模型預設",
-                      low: "低",
-                      medium: "中",
-                      high: "高",
-                    }[v]
-                  }
+                  {effortLabel[v]}
                 </option>
               )}
             </For>

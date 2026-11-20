@@ -37,18 +37,24 @@ test("PKCE login, stream, reload, stop and durable settings", async ({
 }) => {
   await login(page);
   await page.getByRole("button", { name: "新對話" }).click();
-  await page.getByLabel("模型", { exact: true }).selectOption("fixture-alt");
-  await page.getByLabel("思考強度").selectOption("high");
-  await expect(page.getByLabel("思考強度")).toBeEnabled();
+  const model = page.getByLabel("模型", { exact: true });
+  const effort = page.getByLabel("思考強度");
+  await model.selectOption("gpt-5.2");
+  await expect(effort.locator("option")).toHaveText([
+    "模型預設", "低", "中", "高", "極高",
+  ]);
+  await effort.selectOption("xhigh");
+  await expect(effort).toBeEnabled();
   await page.reload();
-  await expect(page.getByLabel("思考強度")).toHaveValue("high");
+  await expect(effort).toHaveValue("xhigh");
   await page.getByLabel("訊息").fill("inspect settings");
   await page.getByLabel("訊息").press("Enter");
   await expect(page.getByTestId("partial")).toContainText("Test");
   await page.reload();
-  await expect(page.locator("[data-role=assistant]")).toContainText(
-    "fixture-alt:high",
-  );
+  await expect(page.locator("[data-role=assistant]")).toContainText("gpt-5.2:xhigh");
+  await model.selectOption("gpt-4.1-mini");
+  await expect(effort.locator("option")).toHaveText(["模型預設"]);
+  await expect(effort).toHaveValue("default");
   await page.getByLabel("訊息").fill("stop me");
   await page.getByLabel("訊息").press("Enter");
   await page.getByRole("button", { name: "停止" }).click();
