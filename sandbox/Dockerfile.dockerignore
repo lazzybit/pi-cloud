@@ -1,4 +1,6 @@
 **
 !sandbox/
 !sandbox/guard.c
-!sandbox/worker.py
+!sandbox/package*.json
+!sandbox/worker.ts
+!sandbox/egress.ts

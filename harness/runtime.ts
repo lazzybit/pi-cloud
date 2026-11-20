@@ -1,16 +1,17 @@
 import { Harness, createRegistry } from "@earendil-works/pi-durable";
 import type { ConversationId } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT as c } from "@earendil-works/chord/context";
-import { ORPCError } from "@orpc/server";
+import { RpcError } from "./errors.ts";
 import { setTimeout as sleep } from "node:timers/promises";
-import type { Client } from "pg";
+import type { Database } from "./database.ts";
+import { sql } from "kysely";
 import { PgStorage } from "./storage.ts";
 import { terminalAdapter } from "./terminal.ts";
 import { transcript } from "./transcript.ts";
 import { gateway } from "./provider.ts";
-import type { Snapshot, Settings } from "contract";
+import type { Snapshot, Settings } from "./schema.ts";
 export async function runtime(
-  db: Client,
+  db: Database,
   baseUrl: string,
   model: string,
   extraModels = "",
@@ -36,16 +37,16 @@ export async function runtime(
     { models: gateway(baseUrl, models), registry },
     c,
   );
-  await db.query(
-    "CREATE TABLE IF NOT EXISTS pi_requests (cid bigint, request uuid, prompt text NOT NULL, primary key(cid,request))",
+  await sql`CREATE TABLE IF NOT EXISTS pi_requests (cid bigint, request uuid, prompt text NOT NULL, primary key(cid,request))`.execute(
+    db,
   );
-  await db.query(
-    "CREATE TABLE IF NOT EXISTS pi_owner (cid bigint PRIMARY KEY, owner text NOT NULL); CREATE INDEX IF NOT EXISTS pi_owner_list ON pi_owner(owner,cid)",
+  await sql`CREATE TABLE IF NOT EXISTS pi_owner (cid bigint PRIMARY KEY, owner text NOT NULL); CREATE INDEX IF NOT EXISTS pi_owner_list ON pi_owner(owner,cid)`.execute(
+    db,
   );
   h.resume();
   const conv = async (id: number) => {
     const v = await h.conversation(id as ConversationId, c);
-    if (!v) throw new ORPCError("NOT_FOUND");
+    if (!v) throw new RpcError("NOT_FOUND");
     return v;
   };
   let gate = Promise.resolve();
@@ -81,35 +82,40 @@ export async function runtime(
           c,
         )
       ).id;
-      await db.query("INSERT INTO pi_owner VALUES($1,$2)", [id, owner]);
+      await db.insertInto("pi_owner").values({ cid: id, owner }).execute();
       return { id };
     },
     async list(owner: string) {
       return (
-        await db.query("SELECT cid FROM pi_owner WHERE owner=$1 ORDER BY cid", [
-          owner,
-        ])
-      ).rows.map((r) => Number(r.cid));
+        await db
+          .selectFrom("pi_owner")
+          .select("cid")
+          .where("owner", "=", owner)
+          .orderBy("cid")
+          .execute()
+      ).map((r) => Number(r.cid));
     },
     async owned(owner: string, id: number) {
       if (
-        !(
-          await db.query("SELECT 1 FROM pi_owner WHERE owner=$1 AND cid=$2", [
-            owner,
-            id,
-          ])
-        ).rowCount
+        !(await db
+          .selectFrom("pi_owner")
+          .select("cid")
+          .where("owner", "=", owner)
+          .where("cid", "=", id)
+          .executeTakeFirst())
       )
-        throw new ORPCError("NOT_FOUND");
+        throw Object.assign(new Response(null, { status: 404 }), {
+          code: "NOT_FOUND",
+        });
     },
     async configure(id: number, settings: Settings) {
       if (!models.includes(settings.model))
-        throw new ORPCError("BAD_REQUEST", { message: "Unknown model" });
+        throw new RpcError("BAD_REQUEST", { message: "Unknown model" });
       const v = await conv(id);
       return exclusive(async () => {
         const t = await latest(v.id);
         if (t && ["placed", "queued"].includes(t.status))
-          throw new ORPCError("CONFLICT", { message: "busy" });
+          throw new RpcError("CONFLICT", { message: "busy" });
         await v.configure(
           {
             model: { provider: "agentgateway", modelId: settings.model },
@@ -132,13 +138,20 @@ export async function runtime(
         const prev = await store.submissionByRequest(v.id, requestId, c);
         const last = await latest(v.id);
         if (!prev && last && ["queued", "placed"].includes(last.status))
-          throw new ORPCError("CONFLICT", { message: "busy" });
-        const same = await db.query(
-          "INSERT INTO pi_requests VALUES ($1,$2,$3) ON CONFLICT (cid,request) DO UPDATE SET prompt=pi_requests.prompt WHERE pi_requests.prompt=excluded.prompt RETURNING request",
-          [id, requestId, text],
-        );
-        if (!same.rowCount)
-          throw new ORPCError("CONFLICT", {
+          throw new RpcError("CONFLICT", { message: "busy" });
+        const same = await db
+          .insertInto("pi_requests")
+          .values({ cid: id, request: requestId, prompt: text })
+          .onConflict((o) =>
+            o
+              .columns(["cid", "request"])
+              .doUpdateSet({ prompt: text })
+              .where("pi_requests.prompt", "=", text),
+          )
+          .returning("request")
+          .executeTakeFirst();
+        if (!same)
+          throw new RpcError("CONFLICT", {
             message: "request payload changed",
           });
         if (!prev) terminal?.authorizeTurn(id, identity);

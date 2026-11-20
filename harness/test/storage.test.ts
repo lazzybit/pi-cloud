@@ -4,6 +4,7 @@ import { Client } from "pg";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { database } from "../database.ts";
 import { runtime } from "../runtime.ts";
 let pg: PG, client: Client, dir: string;
 beforeAll(async () => {
@@ -31,7 +32,8 @@ afterAll(async () => {
   await rm(dir, { force: true, recursive: true });
 });
 it("conversation IDs and order survive a fresh harness, without contacting a provider", async () => {
-  const start = () => runtime(client, "http://127.0.0.1:1/v1", "unused");
+  const start = () =>
+    runtime(database(client), "http://127.0.0.1:1/v1", "unused");
   const a = await start();
   const first = await a.create("subject-a");
   await a.configure(first.id, { model: "unused", effort: "high" });

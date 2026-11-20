@@ -3,12 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "dependencies": {},
+  "dependencies": {
+    "arktype": "2.2.10",
+    "ipaddr.js": "2.2.0"
+  },
   "devDependencies": {
+    "@types/node": "26.6.6",
+    "typescript": "7.0.2",
     "vitest": "5.1.1"
   },
   "scripts": {
     "guard": "cc -Os -o guard guard.c",
-    "test": "npm run guard && vitest run test"
+    "test": "npm run guard && vitest run test",
+    "check": "tsc --noEmit"
   }
 }

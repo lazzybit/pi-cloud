@@ -1,6 +1,7 @@
 import { MemoryStorage } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
-import type { Client } from "pg";
+import type { Database } from "./database.ts";
+import { sql } from "kysely";
 import { serialize, deserialize } from "node:v8";
 
 // PG is authoritative. Validate on a private staging index; publish receipts and
@@ -9,19 +10,22 @@ export class PgStorage extends MemoryStorage {
   private stage = new MemoryStorage();
   private queue = Promise.resolve();
   private poisoned = false;
-  constructor(private db: Client) {
+  constructor(private db: Database) {
     super();
   }
   async recover() {
-    await this.db.query(
-      "CREATE TABLE IF NOT EXISTS pi_journal (seq bigint generated always as identity primary key, batches bytea not null)",
+    await sql`CREATE TABLE IF NOT EXISTS pi_journal (seq bigint generated always as identity primary key, batches bytea not null)`.execute(
+      this.db,
     );
     let after = "0";
     for (;;) {
-      const { rows } = await this.db.query(
-        "SELECT seq,batches FROM pi_journal WHERE seq>$1 ORDER BY seq LIMIT 128",
-        [after],
-      );
+      const rows = await this.db
+        .selectFrom("pi_journal")
+        .selectAll()
+        .where("seq", ">", after)
+        .orderBy("seq")
+        .limit(128)
+        .execute();
       if (!rows.length) break;
       for (const r of rows) {
         const b = deserialize(r.batches);
@@ -46,9 +50,10 @@ export class PgStorage extends MemoryStorage {
       if (!result.stored) return result;
       const accepted = b.slice(0, result.stored);
       try {
-        await this.db.query("INSERT INTO pi_journal(batches) VALUES ($1)", [
-          serialize(accepted),
-        ]);
+        await this.db
+          .insertInto("pi_journal")
+          .values({ batches: serialize(accepted) })
+          .execute();
         const applied = await super.commit(accepted, receipt, c);
         if (applied.stored !== result.stored)
           throw Error("journal index mismatch");

@@ -1,14 +1,9 @@
-FROM node:26-trixie-slim AS build
+FROM golang:1.27-alpine AS build
 WORKDIR /src
-COPY sandbox-controller/package*.json ./
-RUN npm ci --no-audit --no-fund
-COPY sandbox-controller/*.ts sandbox-controller/tsconfig*.json ./
-RUN npm run build
-
-FROM node:26-trixie-slim
-WORKDIR /app
-COPY --from=build /src/package.json ./
-COPY --from=build /src/dist ./dist
-USER node
+COPY sandbox-controller/go.mod sandbox-controller/*.go ./
+RUN CGO_ENABLED=0 go build -trimpath -o /controller .
+FROM scratch
+COPY --from=build /controller /controller
+USER 65532:65532
 EXPOSE 8081
-CMD ["node","dist/server.js"]
+ENTRYPOINT ["/controller"]

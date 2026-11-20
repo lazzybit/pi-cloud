@@ -1,5 +1,4 @@
 **
 !sandbox-controller/
-!sandbox-controller/*.ts
-!sandbox-controller/package*.json
-!sandbox-controller/tsconfig*.json
+!sandbox-controller/*.go
+!sandbox-controller/go.mod

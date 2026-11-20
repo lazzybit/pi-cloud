@@ -19,16 +19,18 @@ jobs:
         with: { node-version: "26", cache: npm, cache-dependency-path: "**/package-lock.json" }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "21" }
-      - name: Check independent package boundaries
+      - uses: actions/setup-go@v5
+        with: {go-version-file: sandbox-controller/go.mod, cache: false}
+      - name: Check and build components
         run: |
-          test "$(git ls-tree --name-only HEAD | while read -r f; do if [ -f "$f" ]; then printf '%s ' "$f"; fi; done)" = '.gitignore README.md '
-          test ! -d tests
-          for pkg in contract harness tui web sandbox sandbox-controller web/test/e2e; do npm --prefix "$pkg" ci; done
-          for pkg in contract harness web sandbox-controller; do npm --prefix "$pkg" run check; done
-          for pkg in contract harness sandbox sandbox-controller; do npm --prefix "$pkg" test; done
-          for pkg in harness tui web; do npm --prefix "$pkg" run build; done
+          for pkg in harness sandbox harness/e2e; do npm --prefix "$pkg" ci; done
+          for pkg in harness sandbox; do npm --prefix "$pkg" run check && npm --prefix "$pkg" test; done
+          npm --prefix harness run build
+          node harness/check-bundle.ts
+          (cd sandbox-controller && go test -race ./... && go vet ./... && go test -c -o "$RUNNER_TEMP/controller-fixture")
+          printf 'CONTROLLER_FIXTURE=%s/controller-fixture\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - run: ./node_modules/.bin/playwright install --with-deps chromium
-        working-directory: web/test/e2e
+        working-directory: harness/e2e
       - name: Install disposable Keycloak
         run: |
           curl --fail --location --retry 3 -o "$RUNNER_TEMP/kc.tgz" https://github.com/keycloak/keycloak/releases/download/26.4.7/keycloak-26.4.7.tar.gz
@@ -40,14 +42,13 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
-          images='harness web tui sandbox sandbox-controller'
+          images='harness sandbox sandbox-controller'
           if [ -n "$BASE" ] && ! [[ "$BASE" =~ ^0+$ ]]; then
             git fetch --no-tags --depth=1 origin "$BASE"
             git diff --name-only "$BASE" HEAD > "$RUNNER_TEMP/paths"
             images=''
-            for name in harness web tui sandbox sandbox-controller; do
+            for name in harness sandbox sandbox-controller; do
               pattern="^($name/|\.github/)"
-              case "$name" in harness|web|tui) pattern="$pattern|^contract/";; esac
               if grep -Eq "$pattern" "$RUNNER_TEMP/paths"; then images="$images $name"; fi
             done
           fi
@@ -62,12 +63,7 @@ jobs:
         run: |
           if docker image inspect pi-cloud-harness:test >/dev/null 2>&1; then export HARNESS_IMAGE=pi-cloud-harness:test; fi
           if docker image inspect pi-cloud-sandbox:test >/dev/null 2>&1; then export WORKER_IMAGE=pi-cloud-sandbox:test; fi
-          if docker image inspect pi-cloud-web:test >/dev/null 2>&1; then export WEB_IMAGE=pi-cloud-web:test; fi
-          if docker image inspect pi-cloud-tui:test >/dev/null 2>&1; then export TUI_IMAGE=pi-cloud-tui:test; fi
-          timeout 8m npm --prefix web/test/e2e test
-      - name: Verify controller image modules
-        run: |
-          if docker image inspect pi-cloud-sandbox-controller:test >/dev/null 2>&1; then docker run --rm pi-cloud-sandbox-controller:test node --input-type=module -e "await import('./dist/lifecycle.js')"; fi
+          timeout 8m npm --prefix harness/e2e test
       - name: Save tested images
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.changes.outputs.images != ''
         run: docker save $(for name in $IMAGES; do printf 'pi-cloud-%s:test ' "$name"; done) | gzip -1 > "$RUNNER_TEMP/images.tar.gz"

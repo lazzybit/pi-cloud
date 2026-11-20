@@ -2,18 +2,19 @@ import { createHash } from "node:crypto";
 import { setTimeout as wait } from "node:timers/promises";
 import { defineExtension, defineTool } from "@earendil-works/pi-durable";
 import { obj, str } from "@earendil-works/pi-schema";
-import type { Client } from "pg";
+import type { Database } from "./database.ts";
+import { sql } from "kysely";
 import { permissions, type Identity } from "./auth.ts";
 const hash = (x: unknown) =>
   createHash("sha256").update(JSON.stringify(x)).digest("hex");
 type Grants = { web: boolean; volume: boolean };
 type Lease = { uid: string; url: string; key: string };
-export async function terminalAdapter(db: Client) {
+export async function terminalAdapter(db: Database) {
   const url = new URL("/v1/lifecycle", process.env.CONTROLLER_URL!),
     key = process.env.CONTROLLER_KEY;
   if (!key || key.length < 32) throw Error("controller credential required");
-  await db.query(
-    "CREATE TABLE IF NOT EXISTS pi_call (id text PRIMARY KEY,cid bigint NOT NULL,digest text NOT NULL,pod text NOT NULL,boot text NOT NULL,result jsonb)",
+  await sql`CREATE TABLE IF NOT EXISTS pi_call (id text PRIMARY KEY,cid bigint NOT NULL,digest text NOT NULL,pod text NOT NULL,boot text NOT NULL,result jsonb)`.execute(
+    db,
   );
   const turns = new Map<number, Identity>(),
     locks = new Map<string, Promise<unknown>>();
@@ -104,13 +105,20 @@ export async function terminalAdapter(db: Client) {
         id = hash([cid, api.taskId, api.callId]),
         digest = hash(command);
       const owner = (
-        await db.query("SELECT owner FROM pi_owner WHERE cid=$1", [cid])
-      ).rows[0]?.owner;
+        await db
+          .selectFrom("pi_owner")
+          .select("owner")
+          .where("cid", "=", cid)
+          .executeTakeFirst()
+      )?.owner;
       if (!owner) throw Error("owner unavailable");
       await api.details({ phase: "queued" }, ctx);
       const result = await serial(owner, async () => {
-        const row = (await db.query("SELECT * FROM pi_call WHERE id=$1", [id]))
-          .rows[0];
+        const row = await db
+          .selectFrom("pi_call")
+          .selectAll()
+          .where("id", "=", id)
+          .executeTakeFirst();
         if (row && row.digest !== digest) throw Error("conflicting call");
         if (row?.result) return row.result;
         let p: Lease | undefined;
@@ -147,10 +155,17 @@ export async function terminalAdapter(db: Client) {
                 if (!checked.valid)
                   throw Error("sandbox configuration changed before dispatch");
                 ctx.abortSignal?.throwIfAborted();
-                await db.query(
-                  "INSERT INTO pi_call VALUES($1,$2,$3,$4,$5,NULL)",
-                  [id, cid, digest, p.uid, health.boot],
-                );
+                await db
+                  .insertInto("pi_call")
+                  .values({
+                    id,
+                    cid,
+                    digest,
+                    pod: p.uid,
+                    boot: health.boot,
+                    result: null,
+                  })
+                  .execute();
                 try {
                   state = await rpc(p, "cmd", {
                     id,
@@ -189,10 +204,11 @@ export async function terminalAdapter(db: Client) {
               }
             }
           }
-          await db.query("UPDATE pi_call SET result=$2 WHERE id=$1", [
-            id,
-            answer,
-          ]);
+          await db
+            .updateTable("pi_call")
+            .set({ result: JSON.stringify(answer) })
+            .where("id", "=", id)
+            .execute();
           return answer;
         } finally {
           active.delete(cid);

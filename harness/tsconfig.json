@@ -7,12 +7,9 @@
     "noEmit": true,
     "skipLibCheck": true,
     "strict": true,
-    "types": [
-      "node"
-    ]
+    "types": ["node", "vite/client"],
+    "jsx": "preserve",
+    "jsxImportSource": "@solidjs/web"
   },
-  "include": [
-    "*.ts",
-    "test/*.ts"
-  ]
+  "include": ["*.ts", "src/**/*", "test/*.ts"]
 }
