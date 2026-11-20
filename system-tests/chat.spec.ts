@@ -43,7 +43,7 @@ test("PKCE login, stream, reload, stop and durable settings", async ({
   await expect(model).toHaveValue("fixture");
   await model.selectOption("gpt-5.2");
   await expect(effort.locator("option")).toHaveText([
-    "模型預設", "低", "中", "高", "極高",
+    "默認", "low", "medium", "high", "xhigh",
   ]);
   await effort.selectOption("xhigh");
   await expect(effort).toBeEnabled();
@@ -55,7 +55,7 @@ test("PKCE login, stream, reload, stop and durable settings", async ({
   await page.reload();
   await expect(page.locator("[data-role=assistant]")).toContainText("gpt-5.2:xhigh");
   await model.selectOption("gpt-4.1-mini");
-  await expect(effort.locator("option")).toHaveText(["模型預設"]);
+  await expect(effort.locator("option")).toHaveText(["默認"]);
   await expect(effort).toHaveValue("default");
   await page.getByLabel("訊息").fill("stop me");
   await page.getByLabel("訊息").press("Enter");

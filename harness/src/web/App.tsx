@@ -4,15 +4,9 @@ const transport = () => import("./transport.ts");
 import type { Snapshot, Settings, ToolCall } from "./schema.ts";
 import "./web.css";
 
-const effortLabel = {
-  default: "模型預設",
-  minimal: "最低",
-  low: "低",
-  medium: "中",
-  high: "高",
-  xhigh: "極高",
-  max: "最高",
-} satisfies Record<Settings["effort"], string>;
+function effortLabel(effort: Settings["effort"]) {
+  return effort === "default" ? "默認" : effort;
+}
 
 const toolStatus = {
   pending: "等待中",
@@ -225,13 +219,13 @@ export default function App() {
           >
             {efforts() && !settingsAvailable() && (
               <option value={snap()!.settings.effort} selected disabled>
-                {effortLabel[snap()!.settings.effort]}（不可用）
+                {effortLabel(snap()!.settings.effort)}（不可用）
               </option>
             )}
             <For each={efforts()}>
               {(v) => (
                 <option value={v} selected={v === snap()?.settings.effort}>
-                  {effortLabel[v]}
+                  {effortLabel(v)}
                 </option>
               )}
             </For>
