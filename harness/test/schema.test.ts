@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { sendInput } from "../schema.ts";
+import { sendInput } from "../src/schema.ts";
 it("validates and normalizes RPC arguments before dispatch", () => {
   const input = { id: 2, requestId: crypto.randomUUID(), text: " hello " };
   expect(sendInput.assert(input).text).toBe("hello");

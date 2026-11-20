@@ -8,7 +8,7 @@ import (
 )
 
 func TestRequestBoundary(t *testing.T) {
-	for _, body := range []string{`{"action":"acquire","owner":"bad"}`, `{"action":"warm","owner":"` + strings.Repeat("a", 64) + `","id":"x","grants":{"volume":false}}`} {
+	for _, body := range []string{`{"action":"acquire","owner":"bad"}`, `{"action":"warm","owner":"` + strings.Repeat("a", 64) + `","id":"x","grants":{}}`} {
 		var r request
 		_ = json.Unmarshal([]byte(body), &r)
 		if r.valid() {
@@ -16,6 +16,14 @@ func TestRequestBoundary(t *testing.T) {
 		}
 	}
 }
+func TestWarmAcceptsVolumeGrantWithoutNetworkGrant(t *testing.T) {
+	volume := false
+	r := request{Action: "warm", Owner: strings.Repeat("a", 64), Id: "x", Grants: &grants{Volume: &volume}}
+	if !r.valid() {
+		t.Fatal("warm request should not require a network grant")
+	}
+}
+
 func TestAuthBeforeKube(t *testing.T) {
 	r := httptest.NewRequest("POST", "/v1/lifecycle", strings.NewReader("{}"))
 	w := httptest.NewRecorder()

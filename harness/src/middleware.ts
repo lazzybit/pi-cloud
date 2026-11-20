@@ -3,10 +3,10 @@ import {
   authenticatedUserFromSession,
   completeLogin,
   redirectToLogin,
-} from "../session.ts";
-import { service } from "../service.ts";
-import { trustedUrl } from "../auth.ts";
-import { isChatPage } from "../chat-path.ts";
+} from "./session.ts";
+import { service } from "./service.ts";
+import { trustedUrl } from "./auth.ts";
+import { isChatPage } from "./chat-path.ts";
 
 type RequestEvent = Parameters<StartMiddleware>[0];
 const maxInlineSnapshotCharacters = 16_384;

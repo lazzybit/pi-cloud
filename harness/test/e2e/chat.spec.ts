@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { readFileSync, readdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { permissions } from "../auth.ts";
+import { permissions } from "../../src/auth.ts";
 async function login(page: Page, user = "first") {
   await page.goto("/");
   await page.locator("[name=username]").fill(user);
@@ -118,6 +118,23 @@ test("tool streams while collapsed, reload does not run it again", async ({
   await expect(card).not.toHaveAttribute("open", "");
 });
 
+test("a sandbox command uses native HTTP without a proxy or network grant", async ({
+  page,
+}) => {
+  await login(page);
+  await page.getByRole("button", { name: "新對話" }).click();
+  await page.getByLabel("訊息").fill("fixture native network");
+  await page.getByLabel("訊息").press("Enter");
+  const card = page.locator("details.tool-call"),
+    summary = card.locator("summary");
+  await expect(summary).toContainText("已完成", { timeout: 15000 });
+  await summary.click();
+  await expect(card.locator("[data-stream=stdout]")).toHaveText(
+    "native HTTP fixture reached",
+  );
+  await expect(card.getByText("退出碼：0", { exact: true })).toBeVisible();
+});
+
 test("Keycloak re-evaluates group removal even with the original access token", async ({
   page,
 }) => {
@@ -140,7 +157,7 @@ test("Keycloak re-evaluates group removal even with the original access token", 
     base = new URL(issuer).origin;
   process.env.OIDC_ISSUER = issuer;
   process.env.OIDC_AUDIENCE = "api";
-  expect(await permissions(bearer)).toEqual({ volume: true, web: false });
+  expect(await permissions(bearer)).toEqual({ volume: true });
   const auth = await fetch(
     base + "/realms/master/protocol/openid-connect/token",
     {
@@ -168,7 +185,7 @@ test("Keycloak re-evaluates group removal even with the original access token", 
     expect((await fetch(membership, { method: "DELETE", headers })).ok).toBe(
       true,
     );
-    expect(await permissions(bearer)).toEqual({ volume: false, web: false });
+    expect(await permissions(bearer)).toEqual({ volume: false });
   } finally {
     expect((await fetch(membership, { method: "PUT", headers })).ok).toBe(true);
   }

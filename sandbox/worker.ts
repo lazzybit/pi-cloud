@@ -3,7 +3,7 @@ import { spawn, execFileSync } from "node:child_process";
 import { randomUUID, createHash, timingSafeEqual } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { type } from "arktype";
-import { webProxy } from "./egress.ts";
+
 const workspace = process.env.WORKSPACE ?? "/workspace",
   guard = process.env.GUARD ?? "/opt/terminal/guard",
   key = process.env.RUNTIME_KEY;
@@ -12,7 +12,7 @@ const expected = Buffer.from("Bearer " + key),
   boot = randomUUID();
 await mkdir(workspace + "/.tmp", { recursive: true });
 execFileSync(guard, [workspace, "true"], { env: { PATH: "/usr/bin:/bin" } });
-const proxy = process.env.EGRESS_WEB === "1" ? await webProxy() : "";
+
 type Result = {
   stdout: string;
   stderr: string;
@@ -56,13 +56,6 @@ function start(command: string, digest: string): Call {
       LANG: "C.UTF-8",
       TMPDIR: workspace + "/.tmp",
       SSL_CERT_FILE: "/etc/ssl/certs/ca-certificates.crt",
-      ...(proxy
-        ? {
-            PI_EGRESS_SOCKET: proxy,
-            ALL_PROXY: "socks5h://localhost" + proxy,
-            all_proxy: "socks5h://localhost" + proxy,
-          }
-        : {}),
     },
   });
   entry.pid = child.pid;

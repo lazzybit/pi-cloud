@@ -3,4 +3,3 @@
 !sandbox/guard.c
 !sandbox/package*.json
 !sandbox/worker.ts
-!sandbox/egress.ts

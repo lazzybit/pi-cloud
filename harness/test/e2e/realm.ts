@@ -1,13 +1,13 @@
 // Build a disposable realm; passwords and resource server secrets exist for one run only.
 import { randomUUID } from "node:crypto";
 export function realm(password, origin) {
-  const scopes = ["execute", "persistent-volume", "egress-web"];
+  const scopes = ["execute", "persistent-volume"];
   return {
     realm: "fixture",
     enabled: true,
     sslRequired: "none",
     registrationAllowed: false,
-    groups: [{ name: "runners" }, { name: "disk" }, { name: "network" }],
+    groups: [{ name: "runners" }, { name: "disk" }],
     users: ["first", "second"].map((username) => ({
       username,
       enabled: true,
@@ -72,7 +72,7 @@ export function realm(password, origin) {
             { name: "sandbox", scopes: scopes.map((name) => ({ name })) },
           ],
           policies: [
-            ...["runners", "disk", "network"].map((name) => ({
+            ...["runners", "disk"].map((name) => ({
               name,
               type: "group",
               logic: "POSITIVE",
@@ -92,7 +92,7 @@ export function realm(password, origin) {
                 resources: '["sandbox"]',
                 scopes: JSON.stringify([name]),
                 applyPolicies: JSON.stringify([
-                  ["runners", "disk", "network"][i],
+                  ["runners", "disk"][i],
                 ]),
               },
             })),

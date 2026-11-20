@@ -2,7 +2,7 @@
 !harness/
 !harness/package*.json
 !harness/.npmrc
-!harness/*.ts
+!harness/vite.config.ts
 !harness/tsconfig.json
 !harness/src/
 !harness/src/**

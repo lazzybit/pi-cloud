@@ -4,8 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "arktype": "2.2.10",
-    "ipaddr.js": "2.2.0"
+    "arktype": "2.2.10"
   },
   "devDependencies": {
     "@types/node": "26.6.6",

@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
-process.chdir(fileURLToPath(new URL("../../", import.meta.url)));
+process.chdir(fileURLToPath(new URL("../../../", import.meta.url)));
 import { fake } from "./fake.ts";
 import { realm } from "./realm.ts";
 import { cluster } from "./cluster.ts";
@@ -153,10 +153,10 @@ try {
   };
   await launch();
   const test = spawn(
-    "harness/e2e/node_modules/.bin/playwright",
+    "harness/test/e2e/node_modules/.bin/playwright",
     [
       "test",
-      "--config=harness/e2e/playwright.config.ts",
+      "--config=harness/test/e2e/playwright.config.ts",
       ...process.argv.slice(2),
     ],
     {

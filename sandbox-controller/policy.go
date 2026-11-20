@@ -14,7 +14,7 @@ type M = map[string]any
 const label = "app.kubernetes.io/managed-by"
 const managed = "pi-sandbox-controller"
 
-type grants struct{ Volume, Web *bool }
+type grants struct{ Volume *bool }
 type request struct {
 	Owner, Id, Action, Uid string
 	Grants                 *grants
@@ -33,7 +33,7 @@ func (r request) valid() bool {
 	case "fence":
 		return true
 	case "check", "warm", "acquire":
-		return (r.Action != "check" || r.Uid != "") && r.Grants != nil && r.Grants.Web != nil && r.Grants.Volume != nil
+		return (r.Action != "check" || r.Uid != "") && r.Grants != nil && r.Grants.Volume != nil
 	}
 	return false
 }
@@ -55,11 +55,7 @@ func manifest(r request, c config, claim, b string, now int64) M {
 	}
 	key := make([]byte, 32)
 	rand.Read(key)
-	web := "0"
-	if *r.Grants.Web {
-		web = "1"
-	}
-	container := M{"name": "sandbox", "image": c.Image, "env": []M{env("EGRESS_WEB", web), env("RUNTIME_KEY", hex.EncodeToString(key))}, "securityContext": M{"allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true, "capabilities": M{"drop": []string{"ALL"}}}, "resources": M{"requests": M{"cpu": "50m", "memory": "48Mi"}, "limits": M{"cpu": "1", "memory": "256Mi"}}, "readinessProbe": M{"tcpSocket": M{"port": 8282}}, "volumeMounts": []M{{"name": "data", "mountPath": "/workspace"}, {"name": "tmp", "mountPath": "/tmp"}}}
+	container := M{"name": "sandbox", "image": c.Image, "env": []M{env("RUNTIME_KEY", hex.EncodeToString(key))}, "securityContext": M{"allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true, "capabilities": M{"drop": []string{"ALL"}}}, "resources": M{"requests": M{"cpu": "50m", "memory": "48Mi"}, "limits": M{"cpu": "1", "memory": "256Mi"}}, "readinessProbe": M{"tcpSocket": M{"port": 8282}}, "volumeMounts": []M{{"name": "data", "mountPath": "/workspace"}, {"name": "tmp", "mountPath": "/tmp"}}}
 	spec := M{"automountServiceAccountToken": false, "enableServiceLinks": false, "restartPolicy": "Never", "securityContext": M{"runAsNonRoot": true, "runAsUser": 65532, "runAsGroup": 65532, "fsGroup": 65532, "seccompProfile": M{"type": "RuntimeDefault"}}, "volumes": []M{data, {"name": "tmp", "emptyDir": M{"sizeLimit": "32Mi"}}}, "containers": []M{container}}
 	if c.RuntimeClass != "" {
 		spec["runtimeClassName"] = c.RuntimeClass

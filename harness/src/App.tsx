@@ -1,7 +1,7 @@
 import { createSignal, For } from "solid-js";
 import { getRequestEvent } from "@solidjs/web";
 const transport = () => import("./transport.ts");
-import type { Snapshot, Settings, ToolCall } from "../schema.ts";
+import type { Snapshot, Settings, ToolCall } from "./schema.ts";
 import "./web.css";
 
 const toolStatus = {

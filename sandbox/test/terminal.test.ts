@@ -4,6 +4,7 @@ import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
+import { createServer } from "node:http";
 it("claims a call once, returns both streams and preserves workspace on restart", async () => {
   const key = crypto.randomUUID();
   let boot = "";
@@ -14,7 +15,6 @@ it("claims a call once, returns both streams and preserves workspace on restart"
       env: {
         ...process.env,
         RUNTIME_KEY: key,
-        EGRESS_WEB: "1",
         WORKSPACE: cwd,
         PORT: "35329",
         BIND: "127.0.0.1",
@@ -58,24 +58,36 @@ it("claims a call once, returns both streams and preserves workspace on restart"
       .poll(async () => (await post("get", { id: cid })).state)
       .toBe("done");
     expect((await post("get", { id: cid })).result.exitCode).not.toBe(0);
-    const proxy = "d".repeat(64);
-    await post("cmd", {
-      id: proxy,
-      command: `exec python3 -c 'import socket,os; s=socket.socket(socket.AF_UNIX); s.connect(os.environ["PI_EGRESS_SOCKET"]); s.sendall(bytes([5,1,0])); print(s.recv(2).hex()); s.sendall(bytes([5,1,0,1,127,0,0,1,1,187])); print(s.recv(10)[1])'`,
-    });
-    await expect
-      .poll(async () => (await post("get", { id: proxy })).state)
-      .toBe("done");
-    expect((await post("get", { id: proxy })).result.stdout).toBe("0500\n2\n");
-    const net = "c".repeat(64);
-    await post("cmd", {
-      id: net,
-      command: `exec python3 -c 'import socket;socket.socket()'`,
-    });
-    await expect
-      .poll(async () => (await post("get", { id: net })).state)
-      .toBe("done");
-    expect((await post("get", { id: net })).result.exitCode).not.toBe(0);
+    const web = createServer((_request, response) => response.end("direct HTTP"));
+    web.listen(0, "127.0.0.1");
+    try {
+      await once(web, "listening");
+      const address = web.address();
+      if (!address || typeof address === "string") throw Error("missing HTTP port");
+      const net = "c".repeat(64);
+      await post("cmd", {
+        id: net,
+        command: `exec python3 -c 'import urllib.request; assert not urllib.request.getproxies(); print(urllib.request.urlopen("http://localhost:${address.port}", timeout=2).read().decode())'`,
+      });
+      await expect
+        .poll(async () => (await post("get", { id: net })).state)
+        .toBe("done");
+      expect((await post("get", { id: net })).result).toMatchObject({
+        stdout: "direct HTTP\n",
+        stderr: "",
+        exitCode: 0,
+      });
+      const local = "d".repeat(64);
+      await post("cmd", {
+        id: local,
+        command: "exec python3 -c 'import http.client; conn = http.client.HTTPConnection(\"localhost\", 35329, timeout=2); conn.request(\"POST\", \"/cmd\"); print(conn.getresponse().status)'",
+      });
+      await expect
+        .poll(async () => (await post("get", { id: local })).result?.stdout)
+        .toBe("403\n");
+    } finally {
+      web.close();
+    }
     child!.kill();
     await once(child!, "exit");
     await launch();

@@ -59,6 +59,6 @@ export async function permissions(token: string) {
       .flatMap((p) => p.scopes ?? []),
   );
   return scopes.has("execute")
-    ? { volume: scopes.has("persistent-volume"), web: scopes.has("egress-web") }
+    ? { volume: scopes.has("persistent-volume") }
     : null;
 }

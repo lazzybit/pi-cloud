@@ -7,7 +7,7 @@ import { sql } from "kysely";
 import { permissions, type Identity } from "./auth.ts";
 const hash = (x: unknown) =>
   createHash("sha256").update(JSON.stringify(x)).digest("hex");
-type Grants = { web: boolean; volume: boolean };
+type Grants = { volume: boolean };
 type Lease = { uid: string; url: string; key: string };
 export async function terminalAdapter(db: Database) {
   const url = new URL("/v1/lifecycle", process.env.CONTROLLER_URL!),

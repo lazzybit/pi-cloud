@@ -54,6 +54,8 @@ static void restrict_filesystem(const char *workspace) {
     if (ruleset < 0) fail();
 
     allow_path(ruleset, "/etc/ssl/certs", read_and_execute);
+    allow_path(ruleset, "/etc/hosts", LANDLOCK_ACCESS_FS_READ_FILE);
+    allow_path(ruleset, "/etc/resolv.conf", LANDLOCK_ACCESS_FS_READ_FILE);
     allow_path(ruleset, "/usr", read_and_execute);
     allow_path(ruleset, workspace, all_abi3_rights);
     allow_path(ruleset, "/dev/null", LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_WRITE_FILE);
@@ -79,11 +81,13 @@ static void restrict_syscalls(void) {
         BPF_JUMP(BPF_JMP | BPF_JGE | BPF_K, 0x40000000, 0, 1),
         BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS),
 
-        // socket(): allow AF_UNIX for the local egress proxy, deny all other families.
-        // Non-socket syscalls skip these four instructions with the syscall number intact.
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_socket, 0, 4),
+        // Use the deployment's network for IPv4/IPv6; keep other socket families restricted.
+        // Non-socket syscalls skip the socket checks with the syscall number intact.
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, __NR_socket, 0, 6),
         BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[0])),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, AF_UNIX, 1, 0),
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, AF_UNIX, 3, 0),
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, AF_INET, 2, 0),
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, AF_INET6, 1, 0),
         BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | EPERM),
         BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
 

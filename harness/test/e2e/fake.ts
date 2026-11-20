@@ -2,6 +2,10 @@ import http from "node:http";
 import { setTimeout as wait } from "node:timers/promises";
 export function fake() {
   return http.createServer(async (req, res) => {
+    if (req.url === "/fixture-network") {
+      res.end("native HTTP fixture reached");
+      return;
+    }
     if (req.url !== "/v1/chat/completions") {
       res.writeHead(404).end();
       return;
@@ -22,7 +26,7 @@ export function fake() {
     if (
       messages.at(-1).role === "user" &&
       [
-        "fixture workspace probe",
+        "fixture native network",
         "fixture interrupted cmd",
         "fixture tool progress",
       ].includes(messages.at(-1).content)
@@ -41,7 +45,7 @@ export function fake() {
                     ? `exec python3 -c "from pathlib import Path; import time; f=Path('claimed').open('a'); f.write('x'); f.close(); time.sleep(3); print('recovered-result')"`
                     : messages.at(-1).content === "fixture tool progress"
                       ? `exec python3 -u -c "import sys,time; print('begin',end=''); time.sleep(3); sys.stderr.write('problem'); sys.exit(7)"`
-                      : "printf terminal-fixture-ok",
+                      : `exec python3 -c 'import urllib.request; assert not urllib.request.getproxies(); print(urllib.request.urlopen("http://localhost:35322/fixture-network", timeout=3).read().decode())'`,
               }),
             },
           },

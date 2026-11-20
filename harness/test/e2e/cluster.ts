@@ -76,8 +76,6 @@ export function cluster(dir, key) {
               "-e",
               "RUNTIME_KEY",
               "-e",
-              "EGRESS_WEB",
-              "-e",
               "BIND",
               "-e",
               "PORT",

@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install --no-install-recommends -y python3 git cur
 COPY sandbox/package*.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 COPY --from=build /guard ./guard
-COPY sandbox/worker.ts sandbox/egress.ts ./
+COPY sandbox/worker.ts ./
 USER 65532:65532
 EXPOSE 8282
 CMD ["node","worker.ts"]

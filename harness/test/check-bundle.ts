@@ -1,6 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { brotliCompressSync } from "node:zlib";
-const root = new URL("./dist/client/assets/", import.meta.url);
+const root = new URL("../dist/client/assets/", import.meta.url);
 let total = 0;
 for (const name of await readdir(root)) {
   if (!name.endsWith(".js")) continue;

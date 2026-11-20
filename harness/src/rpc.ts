@@ -1,14 +1,14 @@
 "use server";
 import { getRequestEvent } from "@solidjs/web";
 import { type } from "arktype";
-import type { Identity } from "../auth.ts";
-import { service } from "../service.ts";
+import type { Identity } from "./auth.ts";
+import { service } from "./service.ts";
 import {
   conversation,
   sendInput,
   stopInput,
   configureInput,
-} from "../schema.ts";
+} from "./schema.ts";
 async function requireAuthenticatedRequest() {
   const event = getRequestEvent();
   const user = event?.locals.identity as Identity | undefined;
