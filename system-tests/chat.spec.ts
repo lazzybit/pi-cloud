@@ -39,6 +39,8 @@ test("PKCE login, stream, reload, stop and durable settings", async ({
   await page.getByRole("button", { name: "新對話" }).click();
   const model = page.getByLabel("模型", { exact: true });
   const effort = page.getByLabel("思考強度");
+  await expect(model.locator("option")).toHaveText(["fixture", "fixture-alt", "gpt-5.2", "gpt-4.1-mini"]);
+  await expect(model).toHaveValue("fixture");
   await model.selectOption("gpt-5.2");
   await expect(effort.locator("option")).toHaveText([
     "模型預設", "低", "中", "高", "極高",

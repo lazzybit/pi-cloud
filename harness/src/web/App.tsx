@@ -120,7 +120,7 @@ export default function App() {
   async function send() {
     const t = text().trim(),
       n = id;
-    if (!t || !snap() || busy() || snap()?.state === "running") return;
+    if (!t || !settingsAvailable() || busy() || snap()?.state === "running") return;
     const req = crypto.randomUUID();
     lock(true);
     draft("");
@@ -170,6 +170,10 @@ export default function App() {
     const s = snap();
     return s?.models.find((model) => model.id === s.settings.model)?.efforts;
   };
+  const settingsAvailable = () => {
+    const s = snap();
+    return s ? efforts()?.includes(s.settings.effort) : false;
+  };
   if (typeof window !== "undefined") queueMicrotask(() => void init());
   return (
     <main>
@@ -194,6 +198,11 @@ export default function App() {
             aria-label="模型"
             onChange={(e) => void configure({ model: e.currentTarget.value })}
           >
+            {snap() && !efforts() && (
+              <option value={snap()!.settings.model} selected disabled>
+                {snap()!.settings.model || "模型"}（不可用）
+              </option>
+            )}
             <For each={snap()?.models}>
               {(m) => (
                 <option value={m.id} selected={m.id === snap()?.settings.model}>
@@ -207,12 +216,18 @@ export default function App() {
           思考強度{" "}
           <select
             aria-label="思考強度"
+            disabled={!efforts()}
             onChange={(e) =>
               void configure({
                 effort: e.currentTarget.value as Settings["effort"],
               })
             }
           >
+            {efforts() && !settingsAvailable() && (
+              <option value={snap()!.settings.effort} selected disabled>
+                {effortLabel[snap()!.settings.effort]}（不可用）
+              </option>
+            )}
             <For each={efforts()}>
               {(v) => (
                 <option value={v} selected={v === snap()?.settings.effort}>
@@ -268,7 +283,7 @@ export default function App() {
           </button>
         ) : (
           <button
-            disabled={busy() || !text().trim() || !snap()}
+            disabled={busy() || !text().trim() || !settingsAvailable()}
             onClick={() => void send()}
           >
             送出

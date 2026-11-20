@@ -1,6 +1,4 @@
-import { Harness, createRegistry } from "@earendil-works/pi-durable";
-import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/models";
-import type { ConversationId } from "@earendil-works/pi-durable";
+import { Harness, createRegistry, type ConversationId, type AgentState } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT as c } from "@earendil-works/chord/context";
 import { RpcError } from "./errors.ts";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -15,18 +13,10 @@ import type { Snapshot, Settings } from "../web/schema.ts";
 export async function runtime(
   db: Database,
   baseUrl: string,
-  model: string,
-  extraModels = "",
+  preferredModel?: string,
 ) {
-  const modelIds = [
-    ...new Set([
-      model,
-      ...extraModels
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-    ]),
-  ];
+  const catalog = gateway(baseUrl);
+  await catalog.refresh();
   await migrateWriter(db);
   const store = new PgStorage(db);
   await store.recover();
@@ -36,19 +26,25 @@ export async function runtime(
     : undefined;
   if (cmd) registry.install(cmd.extension);
   const terminal = cmd?.executor;
-  const modelRegistry = gateway(baseUrl, modelIds);
-  const models: Snapshot["models"] = modelRegistry
-    .getModels("agentgateway")
-    .map((model) => ({
-      id: model.id,
-      efforts: ["default", ...getSupportedThinkingLevels(model).filter((level) => level !== "off")],
-    }));
   const h = await Harness.open(
     store,
-    { models: modelRegistry, registry },
+    { models: catalog.models, registry },
     c,
   );
   h.resume();
+  const refresh = setInterval(() => {
+    void catalog.refresh().catch(() => {
+      console.warn("agentgateway model list refresh failed; keeping last list");
+    });
+  }, 60_000).unref();
+  const defaultModel = () =>
+    catalog.choices.find(({ id }) => id === preferredModel)?.id ?? catalog.choices[0]?.id;
+  function requireSettings(model: string | undefined, effort: Settings["effort"]) {
+    const selected = catalog.choices.find(({ id }) => id === model);
+    if (!selected) throw new RpcError("BAD_REQUEST", { message: "Model is not listed by agentgateway" });
+    if (!selected.efforts.includes(effort))
+      throw new RpcError("BAD_REQUEST", { message: "Unsupported thinking level for this model" });
+  }
   const conv = async (id: number) => {
     const v = await h.conversation(id as ConversationId, c);
     if (!v) throw new RpcError("NOT_FOUND");
@@ -74,10 +70,13 @@ export async function runtime(
     ).items[0];
   return {
     close: () => {
+      clearInterval(refresh);
       terminal?.close();
       return h.close(c);
     },
     create: async (owner: string) => {
+      const model = defaultModel();
+      if (!model) throw new RpcError("BAD_REQUEST", { message: "No models listed by agentgateway" });
       const id = (
         await h.createConversation(
           {
@@ -114,16 +113,12 @@ export async function runtime(
         });
     },
     async configure(id: number, settings: Settings) {
-      const selected = models.find((model) => model.id === settings.model);
-      if (!selected)
-        throw new RpcError("BAD_REQUEST", { message: "Unknown model" });
-      if (!selected.efforts.includes(settings.effort))
-        throw new RpcError("BAD_REQUEST", { message: "Unsupported thinking level for this model" });
       const v = await conv(id);
       return exclusive(async () => {
         const t = await latest(v.id);
         if (t && ["placed", "queued"].includes(t.status))
           throw new RpcError("CONFLICT", { message: "busy" });
+        requireSettings(settings.model, settings.effort);
         await v.configure(
           {
             model: { provider: "agentgateway", modelId: settings.model },
@@ -147,6 +142,10 @@ export async function runtime(
         const last = await latest(v.id);
         if (!prev && last && ["queued", "placed"].includes(last.status))
           throw new RpcError("CONFLICT", { message: "busy" });
+        if (!prev) {
+          const { model, thinkingLevel } = await v.agent(c);
+          requireSettings(model?.modelId, thinkingLevel === "off" ? "default" : thinkingLevel);
+        }
         const same = await db
           .insertInto("pi_requests")
           .values({ cid: id, request: requestId, prompt: text })
@@ -214,21 +213,16 @@ export async function runtime(
                   ? "stopped"
                   : "failed"
                 : "running";
-          const agent = value.docs["pi.agent"] as
-            | {
-                model?: { modelId: string };
-                thinkingLevel?: Exclude<Settings["effort"], "default"> | "off";
-              }
-            | undefined;
+          const agent = value.docs["pi.agent"] as AgentState | undefined;
           const settings: Settings = {
-            model: agent?.model?.modelId ?? model,
+            model: agent?.model?.modelId ?? "",
             effort:
               !agent?.thinkingLevel || agent.thinkingLevel === "off"
                 ? "default"
                 : agent.thinkingLevel,
           };
           const s = {
-            models,
+            models: catalog.choices,
             settings,
             id,
             messages,

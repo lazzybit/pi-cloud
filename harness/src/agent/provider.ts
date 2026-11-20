@@ -1,10 +1,37 @@
-import { createModels, createProvider } from "@earendil-works/pi-ai/models";
-import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
+import { createModels, createProvider, getSupportedThinkingLevels } from "@earendil-works/pi-ai/models";
+import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import { OPENAI_MODELS } from "@earendil-works/pi-ai/providers/openai.models";
-export function gateway(baseUrl: string, ids: string[]) {
+import { type } from "arktype";
+import type { Snapshot } from "../web/schema.ts";
+
+const modelList = type({
+  data: type({
+    id: "1 <= string <= 128",
+    "supportsReasoningEffort?": "boolean",
+    "reasoningEfforts?": type({ value: "string" }).array(),
+  }).array(),
+});
+const explicitLevels = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
+export function gateway(url: string) {
+  const baseUrl = url.replace(/\/+$/, "");
   const models = createModels();
-  models.setProvider(
-    createProvider({
+  let choices: Snapshot["models"] = [];
+
+  async function refresh() {
+    const response = await fetch(`${baseUrl}/models`, {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(5000),
+      redirect: "error",
+    });
+    if (!response.ok) throw new Error(`agentgateway model list HTTP ${response.status}`);
+    const list = modelList(await response.json());
+    if (list instanceof type.errors) throw new Error("Invalid agentgateway model list");
+    const discovered = new Map<string, (typeof list.data)[number]>();
+    for (const entry of list.data)
+      if (!discovered.has(entry.id)) discovered.set(entry.id, entry);
+
+    const provider = createProvider({
       id: "agentgateway",
       name: "agentgateway",
       baseUrl,
@@ -17,19 +44,21 @@ export function gateway(baseUrl: string, ids: string[]) {
           }),
         },
       },
-      models: ids.map((id) => {
+      models: [...discovered.values()].map(({ id, supportsReasoningEffort, reasoningEfforts }) => {
         const catalogModel = Object.hasOwn(OPENAI_MODELS, id)
           ? OPENAI_MODELS[id as keyof typeof OPENAI_MODELS]
           : undefined;
-        // Keep the existing low/medium/high options for gateway-only IDs.
-        const levels = catalogModel ? catalogModel.thinkingLevelMap : { minimal: null };
+        const offered = reasoningEfforts?.map(({ value }) => value);
+        const levels = offered
+          ? Object.fromEntries(explicitLevels.map((level) => [level, offered.includes(level) ? level : null]))
+          : catalogModel?.thinkingLevelMap;
         return {
           id,
           name: id,
-          api: "openai-completions",
+          api: "openai-responses",
           provider: "agentgateway",
           baseUrl,
-          reasoning: catalogModel?.reasoning ?? true,
+          reasoning: supportsReasoningEffort !== false && (offered !== undefined || catalogModel?.reasoning === true),
           // "Model default" omits the wire field rather than sending a disable value.
           thinkingLevelMap: { ...levels, off: null },
           input: ["text"],
@@ -38,8 +67,18 @@ export function gateway(baseUrl: string, ids: string[]) {
           maxTokens: 4096,
         } as const;
       }),
-      api: openAICompletionsApi(),
-    }),
-  );
-  return models;
+      api: openAIResponsesApi(),
+    });
+    models.setProvider(provider);
+    choices = provider.getModels().map((model) => ({
+      id: model.id,
+      efforts: ["default", ...getSupportedThinkingLevels(model).filter((level) => level !== "off")],
+    }));
+  }
+
+  return {
+    models,
+    refresh,
+    get choices() { return choices; },
+  };
 }

@@ -22,8 +22,7 @@ async function start() {
   const app = await runtime(
     db,
     process.env.MODEL_BASE_URL!,
-    process.env.MODEL_ID!,
-    process.env.MODEL_CHOICES,
+    process.env.MODEL_ID,
   );
   return { db, app };
 }
